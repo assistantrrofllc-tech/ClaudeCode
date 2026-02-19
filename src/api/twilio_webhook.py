@@ -29,7 +29,13 @@ def _validate_twilio_request() -> bool:
         return True
 
     validator = RequestValidator(TWILIO_AUTH_TOKEN)
-    url = request.url
+
+    # When behind a reverse proxy (ngrok, etc.), reconstruct the original
+    # public URL that Twilio signed against using forwarded headers.
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme)
+    host = request.headers.get("X-Forwarded-Host") or request.headers.get("Host", "")
+    url = f"{proto}://{host}{request.path}"
+
     params = request.form.to_dict()
     signature = request.headers.get("X-Twilio-Signature", "")
     return validator.validate(url, params, signature)

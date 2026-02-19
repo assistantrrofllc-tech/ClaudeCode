@@ -29,6 +29,7 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "src" / "database" / "sch
 
 def setup_test_db():
     """Create a fresh DB and seed it with a week of receipt data."""
+    os.environ["DATABASE_PATH"] = TEST_DB
     if Path(TEST_DB).exists():
         Path(TEST_DB).unlink()
 

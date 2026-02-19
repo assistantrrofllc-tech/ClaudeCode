@@ -20,6 +20,8 @@ from flask import Flask
 from config.settings import APP_HOST, APP_PORT, APP_DEBUG, SECRET_KEY
 from src.api.twilio_webhook import twilio_bp
 from src.api.reports import reports_bp
+from src.api.export import export_bp
+from src.api.dashboard import dashboard_bp
 
 
 def create_app() -> Flask:
@@ -33,6 +35,8 @@ def create_app() -> Flask:
     # Register blueprints
     app.register_blueprint(twilio_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(export_bp)
+    app.register_blueprint(dashboard_bp)
 
     @app.route("/health")
     def health():

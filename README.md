@@ -16,7 +16,7 @@ No app to download. No login for field crews. Just text a photo.
 
 | Module | Description | Status |
 |---|---|---|
-| **The Ledger** | Receipt tracking via SMS — OCR, confirmation, categorization, dashboard | In Development |
+| **The Ledger** | Receipt tracking via SMS — OCR, confirmation, categorization, dashboard | ✅ Complete |
 | **Inventory Tracker** | Shop supply tracking, recurring orders, low stock alerts | Planned |
 | **Project Management** | Job costing, crew assignment, project timelines | Planned |
 
@@ -32,7 +32,7 @@ Employee texts receipt photo + project name
   GPT-4o-mini Vision extracts receipt data (OCR)
         |
         v
-  Ollama formats confirmation message
+  Confirmation message sent back via SMS
         |
         v
   Employee confirms via YES/NO reply
@@ -48,15 +48,40 @@ Employee texts receipt photo + project name
 
 | Component | Technology |
 |---|---|
-| Backend | Python (Flask/FastAPI) |
-| Database | SQLite |
+| Backend | Python 3.11+ / Flask |
+| Database | SQLite (WAL mode) |
 | SMS Gateway | Twilio Programmable Messaging |
 | OCR / Vision | OpenAI GPT-4o-mini Vision API |
-| Local AI | Ollama (Mac Mini) |
-| Frontend | Mobile-first web app |
-| Image Storage | Local filesystem |
+| Frontend | Mobile-first single-page web dashboard |
+| Image Storage | Local filesystem (`storage/receipts/`) |
 | Export | CSV (QuickBooks-compatible) |
-| Email Reports | Python SMTP / SendGrid |
+| Email Reports | Python SMTP |
+| Tunnel (Dev) | ngrok |
+
+## Features
+
+### SMS Receipt Pipeline
+- Auto-registration of new employees on first text
+- GPT-4o-mini Vision OCR extracts vendor, items, totals, tax, payment method
+- Confirmation flow via YES/NO text reply
+- Missed receipt support (manual entry via text)
+- Fuzzy project matching against active projects
+
+### Web Dashboard (Mobile-First)
+- **Home** — Week total spend, comparison vs prior week, flagged count, spend breakdown by crew/card/project, recent activity feed
+- **Flags** — Review queue for flagged receipts with approve/edit/dismiss actions
+- **Search** — Full-text search with filters (date, employee, project, vendor, category, amount, status), pagination, CSV export
+- **Employee Drill-down** — Tap any crew member to see all their receipts
+- **Receipt Detail** — Tap any transaction to see full details with the actual receipt photo
+
+### QuickBooks CSV Export
+- One-click export with columns: Date, Vendor, Account, Amount, Tax, Total, Payment Method, Memo, Line Items
+- Filterable by date range, employee, project, category
+
+### Weekly Email Reports
+- Per-employee breakdown with receipt details
+- Flagged receipt alerts
+- HTML and plaintext versions
 
 ## Project Structure
 
@@ -66,24 +91,38 @@ crewledger/
 ├── README.md              # This file
 ├── .env.example           # Environment variable template
 ├── .gitignore
-├── config/                # Application configuration
+├── requirements.txt       # Python dependencies
+├── config/
+│   └── settings.py        # Environment variable loading
 ├── src/
-│   ├── app.py             # Main application entry point
-│   ├── database/          # SQLite schema, models, connection
-│   ├── api/               # Twilio webhook, dashboard REST API
-│   ├── services/          # OCR, Ollama, receipt processing,
-│   │                        categorization, duplicate detection,
-│   │                        fuzzy matching, employee registry
-│   ├── messaging/         # SMS conversation flow, templates
-│   └── reports/           # Weekly email reports
+│   ├── app.py             # Flask application entry point
+│   ├── database/
+│   │   ├── connection.py  # SQLite connection helper (WAL, Row factory)
+│   │   └── schema.sql     # Full database schema + seed data
+│   ├── api/
+│   │   ├── twilio_webhook.py  # POST /webhook/sms — Twilio inbound
+│   │   ├── dashboard.py       # Dashboard API + receipt image serving
+│   │   ├── export.py          # GET /export/quickbooks — CSV export
+│   │   └── reports.py         # Weekly report endpoints
+│   ├── services/
+│   │   ├── ocr.py             # GPT-4o-mini Vision receipt extraction
+│   │   ├── report_generator.py
+│   │   └── email_sender.py
+│   └── messaging/
+│       └── sms_handler.py     # SMS conversation flow engine
 ├── dashboard/
-│   ├── static/            # CSS, JS, images
-│   └── templates/         # HTML templates
+│   └── templates/
+│       └── dashboard.html     # Single-page dashboard (HTML + CSS + JS)
 ├── storage/
-│   └── receipts/          # Receipt image files
-├── data/                  # SQLite database (gitignored)
-├── tests/                 # Test suite
-└── scripts/               # DB setup, seed data, utilities
+│   └── receipts/              # Receipt image files (gitignored)
+├── data/                      # SQLite database (gitignored)
+├── tests/
+│   ├── test_twilio_webhook.py # 11 tests — SMS pipeline
+│   ├── test_weekly_report.py  # 12 tests — report generation
+│   ├── test_export.py         # 16 tests — CSV export
+│   ├── test_dashboard.py      # 25 tests — dashboard API
+│   └── test_ocr.py            # 15 tests — OCR parsing
+└── scripts/                   # DB setup, seed data, utilities
 ```
 
 ## Getting Started
@@ -91,9 +130,8 @@ crewledger/
 ### Prerequisites
 
 - Python 3.11+
-- Twilio account with a phone number
+- Twilio account with a phone number (A2P 10DLC registered for US local numbers)
 - OpenAI API key (GPT-4o-mini Vision)
-- Ollama installed locally (Mac Mini recommended)
 
 ### Setup
 
@@ -103,15 +141,24 @@ crewledger/
    cd ClaudeCode
    ```
 
-2. Copy the environment template and fill in your keys:
+2. Create a virtual environment and install dependencies:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. Copy the environment template and fill in your keys:
    ```bash
    cp .env.example .env
    ```
 
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+   Required environment variables:
+   - `TWILIO_ACCOUNT_SID` — Your Twilio Account SID
+   - `TWILIO_AUTH_TOKEN` — Your Twilio Auth Token
+   - `TWILIO_PHONE_NUMBER` — Your Twilio phone number (E.164 format)
+   - `OPENAI_API_KEY` — Your OpenAI API key
+   - `APP_PORT` — Server port (default: 5001)
 
 4. Initialize the database:
    ```bash
@@ -123,6 +170,50 @@ crewledger/
    python src/app.py
    ```
 
+6. Open the dashboard at `http://localhost:5001`
+
+### Live Testing with ngrok
+
+To receive real SMS messages from Twilio, you need a public URL:
+
+1. Install ngrok: `brew install ngrok`
+2. Sign up at [ngrok.com](https://ngrok.com) and configure your authtoken
+3. Start the tunnel: `ngrok http 5001`
+4. Copy the HTTPS URL and set it as your Twilio webhook:
+   - Go to Twilio Console → Phone Numbers → Your Number
+   - Set the webhook URL to: `https://your-subdomain.ngrok-free.dev/webhook/sms`
+   - Method: POST
+
+### Running Tests
+
+```bash
+source .venv/bin/activate
+python -m pytest tests/ -v
+```
+
+All **79 tests** should pass.
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/webhook/sms` | Twilio inbound SMS/MMS webhook |
+| GET | `/health` | Health check |
+| GET | `/` | Dashboard (HTML) |
+| GET | `/api/dashboard/summary` | Home screen data (week totals, breakdowns) |
+| GET | `/api/dashboard/flagged` | Flagged receipt queue |
+| POST | `/api/dashboard/flagged/<id>/approve` | Approve a flagged receipt |
+| POST | `/api/dashboard/flagged/<id>/dismiss` | Dismiss a flagged receipt |
+| POST | `/api/dashboard/flagged/<id>/edit` | Edit and approve a flagged receipt |
+| GET | `/api/dashboard/search` | Search receipts with filters |
+| GET | `/api/dashboard/employee/<id>/receipts` | Employee receipt drill-down |
+| GET | `/api/dashboard/receipt/<id>` | Receipt detail with image status |
+| GET | `/receipt-image/<id>` | Serve receipt photo |
+| GET | `/export/quickbooks` | QuickBooks CSV export |
+| GET | `/reports/weekly/preview` | Preview weekly report (HTML) |
+| GET | `/reports/weekly/data` | Weekly report data (JSON) |
+| POST | `/reports/weekly/send` | Send weekly report email |
+
 ## Operating Costs
 
 At full scale (15 employees, ~300 receipts/month):
@@ -133,8 +224,8 @@ At full scale (15 employees, ~300 receipts/month):
 
 ## Build Phases
 
-1. **Phase 1** — Core receipt pipeline: Twilio -> OCR -> confirm -> save -> dashboard
-2. **Phase 2** — Weekly email reports, QuickBooks CSV export
+1. **Phase 1** — Core receipt pipeline: Twilio -> OCR -> confirm -> save -> dashboard ✅
+2. **Phase 2** — Weekly email reports, QuickBooks CSV export ✅
 3. **Phase 3** — Cost intelligence, anomaly detection, vendor comparison
 4. **Phase 4** — Module 2: Inventory Tracker
 5. **Phase 5** — Module 3: Project Management

@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>CrewLedger</title>
+<style>
+/* ── Reset & Base ────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #F3F4F6;
+  color: #1F2937;
+  min-height: 100vh;
+  padding-bottom: 72px; /* space for bottom nav */
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: inherit; }
+input, select { font-family: inherit; font-size: 14px; }
+
+/* ── Header ──────────────────────────────────────── */
+.header {
+  background: #1F4E79;
+  color: white;
+  padding: 16px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+.header .date { font-size: 13px; opacity: 0.8; }
+
+/* ── Bottom Nav ──────────────────────────────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-top: 1px solid #E5E7EB;
+  display: flex;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0 8px;
+  font-size: 11px;
+  color: #9CA3AF;
+  background: none;
+  border: none;
+  transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-item.active { color: #1F4E79; }
+.nav-item svg { width: 24px; height: 24px; margin-bottom: 3px; }
+.nav-badge {
+  position: absolute;
+  top: 4px;
+  right: calc(50% - 18px);
+  background: #DC2626;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+.nav-item { position: relative; }
+
+/* ── Pages ───────────────────────────────────────── */
+.page { display: none; padding: 16px; }
+.page.active { display: block; }
+
+/* ── Cards ───────────────────────────────────────── */
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+/* ── Home: Week Total ────────────────────────────── */
+.week-total {
+  background: #1F4E79;
+  color: white;
+  border-radius: 12px;
+  padding: 24px 20px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.week-total .label { font-size: 13px; opacity: 0.8; margin-bottom: 4px; }
+.week-total .amount { font-size: 40px; font-weight: 700; letter-spacing: -1px; }
+.week-total .sub { font-size: 13px; opacity: 0.7; margin-top: 6px; }
+
+/* ── Home: Quick Stats ───────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.stat-tile {
+  background: white;
+  border-radius: 10px;
+  padding: 14px 10px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.stat-tile .value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1F4E79;
+}
+.stat-tile .label {
+  font-size: 11px;
+  color: #6B7280;
+  margin-top: 2px;
+}
+.stat-tile.alert .value { color: #DC2626; }
+
+/* ── Home: Flagged Banner ────────────────────────── */
+.flagged-banner {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.flagged-banner .icon { font-size: 20px; }
+.flagged-banner .text { flex: 1; }
+.flagged-banner .text strong { color: #DC2626; font-size: 14px; }
+.flagged-banner .text span { display: block; font-size: 12px; color: #9CA3AF; }
+.flagged-banner .arrow { color: #9CA3AF; font-size: 18px; }
+.flagged-banner.hidden { display: none; }
+
+/* ── Home: Spend Breakdown ───────────────────────── */
+.breakdown-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  background: #F3F4F6;
+  border-radius: 8px;
+  padding: 3px;
+}
+.breakdown-tab {
+  flex: 1;
+  padding: 8px 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.breakdown-tab.active { background: white; color: #1F4E79; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.breakdown-list { list-style: none; }
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+.breakdown-row:last-child { border-bottom: none; }
+.breakdown-row .name { font-size: 14px; font-weight: 500; }
+.breakdown-row .count { font-size: 12px; color: #9CA3AF; }
+.breakdown-row .spend { font-size: 14px; font-weight: 600; color: #1F4E79; }
+
+/* ── Home: Recent Activity ───────────────────────── */
+.activity-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+.activity-row:last-child { border-bottom: none; }
+.activity-info { flex: 1; min-width: 0; }
+.activity-info .vendor { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity-info .meta { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
+.activity-amount { text-align: right; flex-shrink: 0; margin-left: 12px; }
+.activity-amount .total { font-size: 14px; font-weight: 600; }
+.activity-amount .status { font-size: 11px; margin-top: 2px; }
+.status-confirmed { color: #059669; }
+.status-pending { color: #D97706; }
+.status-flagged { color: #DC2626; }
+.status-rejected { color: #9CA3AF; }
+
+/* ── Flags Page ──────────────────────────────────── */
+.flag-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border-left: 4px solid #DC2626;
+}
+.flag-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.flag-header .employee { font-size: 15px; font-weight: 600; }
+.flag-header .amount { font-size: 16px; font-weight: 700; color: #1F4E79; }
+.flag-detail { font-size: 13px; color: #6B7280; margin-bottom: 4px; }
+.flag-reason {
+  background: #FEF2F2;
+  color: #DC2626;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  margin: 8px 0;
+}
+.flag-items { font-size: 12px; color: #6B7280; margin: 6px 0; }
+.flag-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.btn {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  transition: opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active { opacity: 0.7; }
+.btn-approve { background: #059669; color: white; }
+.btn-edit { background: #1F4E79; color: white; }
+.btn-dismiss { background: #F3F4F6; color: #6B7280; }
+.flags-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: #9CA3AF;
+}
+.flags-empty .icon { font-size: 48px; margin-bottom: 12px; }
+.flags-empty .text { font-size: 15px; }
+
+/* ── Search Page ─────────────────────────────────── */
+.search-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.search-input {
+  flex: 1;
+  padding: 12px 14px;
+  border: 1px solid #D1D5DB;
+  border-radius: 10px;
+  font-size: 15px;
+  background: white;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.search-input:focus { border-color: #1F4E79; }
+.filter-toggle {
+  width: 44px;
+  height: 44px;
+  background: white;
+  border: 1px solid #D1D5DB;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.filter-toggle.active { background: #1F4E79; border-color: #1F4E79; color: white; }
+.filter-toggle svg { width: 20px; height: 20px; }
+.filters-panel {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  display: none;
+}
+.filters-panel.open { display: block; }
+.filter-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.filter-row.full { grid-template-columns: 1fr; }
+.filter-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+.filter-group select,
+.filter-group input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  background: white;
+  outline: none;
+}
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.btn-filter { background: #1F4E79; color: white; }
+.btn-clear { background: #F3F4F6; color: #6B7280; }
+.btn-export { background: #059669; color: white; }
+.search-result {
+  background: white;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.search-result .top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.search-result .vendor-name { font-size: 14px; font-weight: 600; }
+.search-result .result-total { font-size: 15px; font-weight: 700; color: #1F4E79; }
+.search-result .result-meta { font-size: 12px; color: #9CA3AF; margin-top: 4px; }
+.search-result .result-items { font-size: 12px; color: #6B7280; margin-top: 6px; }
+.search-result .status-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  margin-left: 6px;
+}
+.badge-confirmed { background: #D1FAE5; color: #059669; }
+.badge-pending { background: #FEF3C7; color: #D97706; }
+.badge-flagged { background: #FEE2E2; color: #DC2626; }
+.badge-rejected { background: #F3F4F6; color: #9CA3AF; }
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+}
+.pagination button {
+  padding: 8px 16px;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+  font-weight: 500;
+}
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pagination .page-info { font-size: 13px; color: #6B7280; }
+.results-count { font-size: 13px; color: #6B7280; margin-bottom: 12px; }
+
+/* ── Edit Modal ──────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 200;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: white;
+  border-radius: 16px 16px 0 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+.modal h3 { font-size: 17px; font-weight: 600; margin-bottom: 16px; }
+.modal .form-group { margin-bottom: 12px; }
+.modal .form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+  margin-bottom: 4px;
+}
+.modal .form-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+.modal .form-group input:focus { border-color: #1F4E79; }
+.modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+/* ── Loading spinner ─────────────────────────────── */
+.spinner {
+  display: flex;
+  justify-content: center;
+  padding: 32px;
+}
+.spinner::after {
+  content: '';
+  width: 28px;
+  height: 28px;
+  border: 3px solid #E5E7EB;
+  border-top-color: #1F4E79;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Toast notifications ─────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #1F2937;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 300;
+  transition: transform 0.3s ease;
+  white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ── Employee Drill-down ────────────────────────── */
+.breakdown-row.clickable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.breakdown-row.clickable:active { background: #F9FAFB; }
+.activity-row.clickable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.activity-row.clickable:active { background: #F9FAFB; }
+
+.drilldown-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.drilldown-back {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: #F3F4F6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #1F4E79;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+.drilldown-back:active { background: #E5E7EB; }
+.drilldown-title { font-size: 18px; font-weight: 700; color: #1F2937; }
+.drilldown-sub { font-size: 13px; color: #6B7280; }
+.drilldown-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.drilldown-stat {
+  background: white;
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.drilldown-stat .value { font-size: 22px; font-weight: 700; color: #1F4E79; }
+.drilldown-stat .label { font-size: 11px; color: #6B7280; margin-top: 2px; }
+
+.receipt-row {
+  background: white;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.receipt-row:active { background: #FAFAFA; }
+.receipt-row .top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.receipt-row .vendor-name { font-size: 14px; font-weight: 600; }
+.receipt-row .receipt-total { font-size: 15px; font-weight: 700; color: #1F4E79; }
+.receipt-row .receipt-meta { font-size: 12px; color: #9CA3AF; margin-top: 4px; }
+.receipt-row .receipt-items { font-size: 12px; color: #6B7280; margin-top: 6px; }
+.receipt-row .has-image-badge {
+  display: inline-block;
+  font-size: 10px;
+  background: #DBEAFE;
+  color: #1D4ED8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+
+/* ── Receipt Detail Modal ────────────────────────── */
+.receipt-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 200;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+.receipt-modal-overlay.open { display: flex; }
+.receipt-modal {
+  background: white;
+  border-radius: 16px 16px 0 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+.receipt-modal-close {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.receipt-modal-close h3 { font-size: 17px; font-weight: 600; }
+.receipt-modal-close button {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #F3F4F6;
+  font-size: 18px;
+  color: #6B7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.receipt-detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #F3F4F6;
+  font-size: 14px;
+}
+.receipt-detail-row:last-child { border-bottom: none; }
+.receipt-detail-row .label { color: #6B7280; }
+.receipt-detail-row .value { font-weight: 500; text-align: right; max-width: 60%; }
+.receipt-image-container {
+  margin: 16px 0;
+  text-align: center;
+}
+.receipt-image-container img {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 8px;
+  border: 1px solid #E5E7EB;
+  object-fit: contain;
+}
+.receipt-image-container .no-image {
+  background: #F9FAFB;
+  border: 2px dashed #D1D5DB;
+  border-radius: 8px;
+  padding: 32px;
+  color: #9CA3AF;
+  font-size: 14px;
+}
+.receipt-line-items {
+  margin-top: 12px;
+}
+.receipt-line-items table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.receipt-line-items th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6B7280;
+  text-transform: uppercase;
+  padding: 6px 0;
+  border-bottom: 1px solid #E5E7EB;
+}
+.receipt-line-items td {
+  padding: 6px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+.receipt-line-items .right { text-align: right; }
+
+/* ── Desktop adjustments ─────────────────────────── */
+@media (min-width: 640px) {
+  .page { max-width: 600px; margin: 0 auto; }
+  .stats-grid { grid-template-columns: 1fr 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────── -->
+<header class="header">
+  <h1>CrewLedger</h1>
+  <span class="date" id="headerDate"></span>
+</header>
+
+<!-- ── Page 1: Home ────────────────────────────────── -->
+<div class="page active" id="pageHome">
+  <div class="spinner" id="homeSpinner"></div>
+  <div id="homeContent" style="display:none;">
+
+    <!-- Week Total -->
+    <div class="week-total">
+      <div class="label">Last Week's Total Spend</div>
+      <div class="amount" id="weekTotal">$0.00</div>
+      <div class="sub" id="weekRange"></div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="stats-grid">
+      <div class="stat-tile">
+        <div class="value" id="statDelta">--</div>
+        <div class="label">vs Last Week</div>
+      </div>
+      <div class="stat-tile">
+        <div class="value" id="statReceipts">0</div>
+        <div class="label">Receipts</div>
+      </div>
+      <div class="stat-tile alert">
+        <div class="value" id="statFlagged">0</div>
+        <div class="label">Flagged</div>
+      </div>
+    </div>
+
+    <!-- Flagged Banner -->
+    <div class="flagged-banner hidden" id="flaggedBanner" onclick="switchPage('flags')">
+      <span class="icon">&#9888;</span>
+      <div class="text">
+        <strong id="flaggedBannerText">0 flagged receipts</strong>
+        <span>Tap to review</span>
+      </div>
+      <span class="arrow">&#8250;</span>
+    </div>
+
+    <!-- Spend Breakdown -->
+    <div class="card">
+      <div class="card-title">Spend Breakdown</div>
+      <div class="breakdown-tabs">
+        <button class="breakdown-tab active" data-tab="crew" onclick="switchBreakdown('crew')">By Crew</button>
+        <button class="breakdown-tab" data-tab="cardholder" onclick="switchBreakdown('cardholder')">By Card</button>
+        <button class="breakdown-tab" data-tab="project" onclick="switchBreakdown('project')">By Project</button>
+      </div>
+      <ul class="breakdown-list" id="breakdownList"></ul>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+      <div class="card-title">Recent Activity</div>
+      <div id="recentList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Page 2: Flags ───────────────────────────────── -->
+<div class="page" id="pageFlags">
+  <div class="spinner" id="flagsSpinner"></div>
+  <div id="flagsContent" style="display:none;"></div>
+</div>
+
+<!-- ── Page 3: Search ──────────────────────────────── -->
+<div class="page" id="pageSearch">
+  <div class="search-bar">
+    <input type="text" class="search-input" id="searchInput" placeholder="Search vendor, employee, project...">
+    <button class="filter-toggle" id="filterToggle" onclick="toggleFilters()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
+    </button>
+  </div>
+
+  <div class="filters-panel" id="filtersPanel">
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>Date From</label>
+        <input type="date" id="filterDateStart">
+      </div>
+      <div class="filter-group">
+        <label>Date To</label>
+        <input type="date" id="filterDateEnd">
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>Employee</label>
+        <select id="filterEmployee"><option value="">All</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Project</label>
+        <select id="filterProject"><option value="">All</option></select>
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>Category</label>
+        <select id="filterCategory"><option value="">All</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Status</label>
+        <select id="filterStatus">
+          <option value="">All</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="pending">Pending</option>
+          <option value="flagged">Flagged</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>Min Amount</label>
+        <input type="number" id="filterAmountMin" placeholder="0.00" step="0.01">
+      </div>
+      <div class="filter-group">
+        <label>Max Amount</label>
+        <input type="number" id="filterAmountMax" placeholder="999.99" step="0.01">
+      </div>
+    </div>
+    <div class="filter-row full">
+      <div class="filter-group">
+        <label>Sort By</label>
+        <select id="filterSort">
+          <option value="date">Date</option>
+          <option value="amount">Amount</option>
+          <option value="employee">Employee</option>
+          <option value="vendor">Vendor</option>
+          <option value="project">Project</option>
+        </select>
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button class="btn btn-filter" onclick="doSearch(1)">Apply Filters</button>
+      <button class="btn btn-clear" onclick="clearFilters()">Clear</button>
+      <button class="btn btn-export" onclick="exportFiltered()">Export CSV</button>
+    </div>
+  </div>
+
+  <div class="results-count" id="resultsCount"></div>
+  <div id="searchResults"></div>
+  <div class="pagination" id="pagination" style="display:none;">
+    <button id="prevPage" onclick="changePage(-1)">&#8249; Prev</button>
+    <span class="page-info" id="pageInfo"></span>
+    <button id="nextPage" onclick="changePage(1)">Next &#8250;</button>
+  </div>
+</div>
+
+<!-- ── Page 4: Employee Drill-down ─────────────────── -->
+<div class="page" id="pageEmployee">
+  <div class="spinner" id="employeeSpinner"></div>
+  <div id="employeeContent" style="display:none;"></div>
+</div>
+
+<!-- ── Receipt Detail Modal ───────────────────────── -->
+<div class="receipt-modal-overlay" id="receiptModal">
+  <div class="receipt-modal" id="receiptModalContent">
+    <!-- Populated by JS -->
+  </div>
+</div>
+
+<!-- ── Edit Modal ──────────────────────────────────── -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h3>Edit Receipt</h3>
+    <input type="hidden" id="editReceiptId">
+    <div class="form-group">
+      <label>Vendor</label>
+      <input type="text" id="editVendor">
+    </div>
+    <div class="form-group">
+      <label>Total</label>
+      <input type="number" id="editTotal" step="0.01">
+    </div>
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="editDate">
+    </div>
+    <div class="form-group">
+      <label>Project</label>
+      <input type="text" id="editProject">
+    </div>
+    <div class="form-group">
+      <label>Payment Method</label>
+      <input type="text" id="editPayment">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-approve" onclick="submitEdit()">Save &amp; Approve</button>
+      <button class="btn btn-dismiss" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ───────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<!-- ── Bottom Navigation ───────────────────────────── -->
+<nav class="bottom-nav">
+  <button class="nav-item active" data-page="home" onclick="switchPage('home')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Home
+  </button>
+  <button class="nav-item" data-page="flags" onclick="switchPage('flags')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+    <span class="nav-badge" id="navFlagBadge" style="display:none;">0</span>
+    Flags
+  </button>
+  <button class="nav-item" data-page="search" onclick="switchPage('search')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    Search
+  </button>
+</nav>
+
+<script>
+/* ── State ───────────────────────────────────────── */
+let summaryData = null;
+let breakdownView = 'crew';
+let searchPage = 1;
+let searchDebounce = null;
+let filtersLoaded = false;
+
+/* ── Init ────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function() {
+  const now = new Date();
+  document.getElementById('headerDate').textContent =
+    now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  loadHomePage();
+
+  // Search on Enter
+  document.getElementById('searchInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doSearch(1);
+  });
+
+  // Debounced search on typing
+  document.getElementById('searchInput').addEventListener('input', function() {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(function() { doSearch(1); }, 400);
+  });
+});
+
+/* ── Navigation ──────────────────────────────────── */
+function switchPage(page) {
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+
+  var pageId = 'page' + page.charAt(0).toUpperCase() + page.slice(1);
+  var pageEl = document.getElementById(pageId);
+  if (pageEl) pageEl.classList.add('active');
+
+  var navEl = document.querySelector('[data-page="' + page + '"]');
+  if (navEl) navEl.classList.add('active');
+
+  if (page === 'home') loadHomePage();
+  if (page === 'flags') loadFlagsPage();
+  if (page === 'search' && !filtersLoaded) loadSearchFilters();
+}
+
+/* ── Home Page ───────────────────────────────────── */
+function loadHomePage() {
+  document.getElementById('homeSpinner').style.display = 'flex';
+  document.getElementById('homeContent').style.display = 'none';
+
+  fetch('/api/dashboard/summary')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      summaryData = data;
+      renderHomePage(data);
+      document.getElementById('homeSpinner').style.display = 'none';
+      document.getElementById('homeContent').style.display = 'block';
+    })
+    .catch(function(err) {
+      console.error('Failed to load summary:', err);
+      document.getElementById('homeSpinner').style.display = 'none';
+    });
+}
+
+function renderHomePage(data) {
+  // Week total
+  document.getElementById('weekTotal').textContent = '$' + data.current_week.total_spend.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('weekRange').textContent = formatDateRange(data.week_start, data.week_end);
+
+  // Quick stats: delta
+  var prev = data.previous_week.total_spend;
+  var curr = data.current_week.total_spend;
+  var delta = prev > 0 ? ((curr - prev) / prev * 100).toFixed(0) : (curr > 0 ? '+100' : '0');
+  var sign = delta > 0 ? '+' : '';
+  document.getElementById('statDelta').textContent = sign + delta + '%';
+  document.getElementById('statReceipts').textContent = data.current_week.receipt_count;
+  document.getElementById('statFlagged').textContent = data.flagged_count;
+
+  // Flagged banner
+  var banner = document.getElementById('flaggedBanner');
+  if (data.flagged_count > 0) {
+    banner.classList.remove('hidden');
+    document.getElementById('flaggedBannerText').textContent =
+      data.flagged_count + ' flagged receipt' + (data.flagged_count !== 1 ? 's' : '') + ' need review';
+    // Nav badge
+    var badge = document.getElementById('navFlagBadge');
+    badge.textContent = data.flagged_count;
+    badge.style.display = 'flex';
+  } else {
+    banner.classList.add('hidden');
+    document.getElementById('navFlagBadge').style.display = 'none';
+  }
+
+  // Breakdown
+  renderBreakdown();
+
+  // Recent activity
+  var recentHtml = '';
+  data.recent_activity.forEach(function(r) {
+    var total = r.total !== null ? '$' + r.total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--';
+    var statusClass = 'status-' + r.status;
+    var date = r.date ? formatDateShort(r.date) : '';
+    recentHtml += '<div class="activity-row clickable" onclick="showReceiptDetail(' + r.id + ')">' +
+      '<div class="activity-info">' +
+        '<div class="vendor">' + escHtml(r.vendor) + (r.has_image ? ' <span style="color:#1D4ED8;font-size:12px;">&#128247;</span>' : '') + '</div>' +
+        '<div class="meta">' + escHtml(r.employee) + (r.project ? ' &middot; ' + escHtml(r.project) : '') + (date ? ' &middot; ' + date : '') + '</div>' +
+      '</div>' +
+      '<div class="activity-amount">' +
+        '<div class="total">' + total + '</div>' +
+        '<div class="status ' + statusClass + '">' + r.status + '</div>' +
+      '</div>' +
+    '</div>';
+  });
+  document.getElementById('recentList').innerHTML = recentHtml || '<div style="text-align:center;color:#9CA3AF;padding:16px;">No recent activity</div>';
+}
+
+function switchBreakdown(view) {
+  breakdownView = view;
+  document.querySelectorAll('.breakdown-tab').forEach(function(t) {
+    t.classList.toggle('active', t.dataset.tab === view);
+  });
+  renderBreakdown();
+}
+
+function renderBreakdown() {
+  if (!summaryData) return;
+  var list;
+  if (breakdownView === 'crew') list = summaryData.by_crew;
+  else if (breakdownView === 'cardholder') list = summaryData.by_cardholder;
+  else list = summaryData.by_project;
+
+  var html = '';
+  list.forEach(function(item) {
+    var clickable = (breakdownView === 'crew' && item.id) ? ' clickable" onclick="showEmployeeReceipts(' + item.id + ')"' : '"';
+    html += '<li class="breakdown-row' + clickable + '>' +
+      '<div><div class="name">' + escHtml(item.name) + '</div><div class="count">' + item.receipt_count + ' receipt' + (item.receipt_count !== 1 ? 's' : '') + '</div></div>' +
+      '<div style="display:flex;align-items:center;gap:8px;"><div class="spend">$' + item.spend.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>' +
+      (breakdownView === 'crew' && item.id ? '<span style="color:#9CA3AF;font-size:16px;">&#8250;</span>' : '') +
+      '</div>' +
+    '</li>';
+  });
+  document.getElementById('breakdownList').innerHTML = html || '<li style="text-align:center;color:#9CA3AF;padding:16px;">No data</li>';
+}
+
+/* ── Flags Page ──────────────────────────────────── */
+function loadFlagsPage() {
+  document.getElementById('flagsSpinner').style.display = 'flex';
+  document.getElementById('flagsContent').style.display = 'none';
+
+  fetch('/api/dashboard/flagged')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      renderFlagsPage(data);
+      document.getElementById('flagsSpinner').style.display = 'none';
+      document.getElementById('flagsContent').style.display = 'block';
+    })
+    .catch(function(err) {
+      console.error('Failed to load flags:', err);
+      document.getElementById('flagsSpinner').style.display = 'none';
+    });
+}
+
+function renderFlagsPage(data) {
+  var container = document.getElementById('flagsContent');
+
+  if (data.count === 0) {
+    container.innerHTML = '<div class="flags-empty"><div class="icon">&#10003;</div><div class="text">No flagged receipts.<br>You\'re all caught up!</div></div>';
+    return;
+  }
+
+  var html = '<div style="margin-bottom:12px;font-size:14px;color:#6B7280;font-weight:500;">' + data.count + ' receipt' + (data.count !== 1 ? 's' : '') + ' to review</div>';
+  data.flagged.forEach(function(r) {
+    var total = r.total !== null ? '$' + r.total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--';
+    var date = r.date ? formatDateShort(r.date) : 'No date';
+    var missed = r.is_missed ? ' <span style="background:#FEF3C7;color:#D97706;font-size:11px;padding:2px 6px;border-radius:3px;">MISSED</span>' : '';
+
+    var itemsHtml = '';
+    if (r.line_items && r.line_items.length > 0) {
+      var itemNames = r.line_items.map(function(i) {
+        var price = i.price !== null ? ' ($' + i.price.toFixed(2) + ')' : '';
+        return escHtml(i.name) + price;
+      }).join(', ');
+      itemsHtml = '<div class="flag-items">' + itemNames + '</div>';
+    }
+
+    html += '<div class="flag-card" id="flag-' + r.id + '">' +
+      '<div class="flag-header">' +
+        '<div class="employee">' + escHtml(r.employee) + missed + '</div>' +
+        '<div class="amount">' + total + '</div>' +
+      '</div>' +
+      '<div class="flag-detail">' + escHtml(r.vendor) + ' &middot; ' + date + '</div>' +
+      (r.project ? '<div class="flag-detail">Project: ' + escHtml(r.project) + '</div>' : '') +
+      (r.payment_method ? '<div class="flag-detail">' + escHtml(r.payment_method) + '</div>' : '') +
+      '<div class="flag-reason">' + escHtml(r.flag_reason) + '</div>' +
+      itemsHtml +
+      '<div class="flag-actions">' +
+        '<button class="btn btn-approve" onclick="approveReceipt(' + r.id + ')">Approve</button>' +
+        '<button class="btn btn-edit" onclick="openEditModal(' + r.id + ', ' + escAttr(JSON.stringify(r)) + ')">Edit</button>' +
+        '<button class="btn btn-dismiss" onclick="dismissReceipt(' + r.id + ')">Dismiss</button>' +
+      '</div>' +
+    '</div>';
+  });
+  container.innerHTML = html;
+}
+
+function approveReceipt(id) {
+  fetch('/api/dashboard/flagged/' + id + '/approve', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status === 'approved') {
+        var el = document.getElementById('flag-' + id);
+        if (el) el.style.display = 'none';
+        showToast('Receipt approved');
+        updateFlagCount(-1);
+      }
+    });
+}
+
+function dismissReceipt(id) {
+  fetch('/api/dashboard/flagged/' + id + '/dismiss', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status === 'dismissed') {
+        var el = document.getElementById('flag-' + id);
+        if (el) el.style.display = 'none';
+        showToast('Receipt dismissed');
+        updateFlagCount(-1);
+      }
+    });
+}
+
+function openEditModal(id, receipt) {
+  document.getElementById('editReceiptId').value = id;
+  document.getElementById('editVendor').value = receipt.vendor || '';
+  document.getElementById('editTotal').value = receipt.total || '';
+  document.getElementById('editDate').value = receipt.date || '';
+  document.getElementById('editProject').value = receipt.project || '';
+  document.getElementById('editPayment').value = receipt.payment_method || '';
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.remove('open');
+}
+
+function submitEdit() {
+  var id = document.getElementById('editReceiptId').value;
+  var body = {
+    vendor: document.getElementById('editVendor').value,
+    total: parseFloat(document.getElementById('editTotal').value) || null,
+    date: document.getElementById('editDate').value,
+    project: document.getElementById('editProject').value,
+    payment_method: document.getElementById('editPayment').value,
+  };
+
+  fetch('/api/dashboard/flagged/' + id + '/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status === 'updated') {
+        closeModal();
+        var el = document.getElementById('flag-' + id);
+        if (el) el.style.display = 'none';
+        showToast('Receipt updated & approved');
+        updateFlagCount(-1);
+      }
+    });
+}
+
+function updateFlagCount(change) {
+  var badge = document.getElementById('navFlagBadge');
+  var count = parseInt(badge.textContent || '0') + change;
+  if (count <= 0) {
+    badge.style.display = 'none';
+    document.getElementById('flaggedBanner').classList.add('hidden');
+  } else {
+    badge.textContent = count;
+    document.getElementById('flaggedBannerText').textContent =
+      count + ' flagged receipt' + (count !== 1 ? 's' : '') + ' need review';
+  }
+  document.getElementById('statFlagged').textContent = Math.max(0, count);
+}
+
+/* ── Employee Drill-down ─────────────────────────── */
+var previousPage = 'home';
+
+function showEmployeeReceipts(employeeId) {
+  previousPage = document.querySelector('.page.active').id.replace('page', '').toLowerCase();
+
+  // Show the employee page
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.getElementById('pageEmployee').classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+
+  document.getElementById('employeeSpinner').style.display = 'flex';
+  document.getElementById('employeeContent').style.display = 'none';
+
+  fetch('/api/dashboard/employee/' + employeeId + '/receipts')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      renderEmployeePage(data);
+      document.getElementById('employeeSpinner').style.display = 'none';
+      document.getElementById('employeeContent').style.display = 'block';
+    })
+    .catch(function(err) {
+      console.error('Failed to load employee receipts:', err);
+      document.getElementById('employeeSpinner').style.display = 'none';
+    });
+}
+
+function renderEmployeePage(data) {
+  var emp = data.employee;
+  var receipts = data.receipts;
+
+  // Calculate totals
+  var totalSpend = 0;
+  receipts.forEach(function(r) { if (r.total) totalSpend += r.total; });
+
+  var html = '';
+
+  // Header with back button
+  html += '<div class="drilldown-header">' +
+    '<button class="drilldown-back" onclick="goBackFromEmployee()">&lsaquo;</button>' +
+    '<div>' +
+      '<div class="drilldown-title">' + escHtml(emp.name) + '</div>' +
+      '<div class="drilldown-sub">' + escHtml(emp.phone) + (emp.crew ? ' &middot; Crew: ' + escHtml(emp.crew) : '') + '</div>' +
+    '</div>' +
+  '</div>';
+
+  // Stats
+  html += '<div class="drilldown-stats">' +
+    '<div class="drilldown-stat">' +
+      '<div class="value">$' + totalSpend.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>' +
+      '<div class="label">Total Spend</div>' +
+    '</div>' +
+    '<div class="drilldown-stat">' +
+      '<div class="value">' + data.count + '</div>' +
+      '<div class="label">Receipts</div>' +
+    '</div>' +
+  '</div>';
+
+  // Receipt list
+  if (receipts.length === 0) {
+    html += '<div style="text-align:center;color:#9CA3AF;padding:32px;">No receipts found</div>';
+  } else {
+    receipts.forEach(function(r) {
+      var total = r.total !== null ? '$' + r.total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--';
+      var date = r.date ? formatDateShort(r.date) : 'No date';
+      var badgeClass = 'badge-' + r.status;
+
+      var itemsHtml = '';
+      if (r.line_items && r.line_items.length > 0) {
+        var names = r.line_items.map(function(i) { return escHtml(i.name); }).join(', ');
+        itemsHtml = '<div class="receipt-items">' + names + '</div>';
+      }
+
+      html += '<div class="receipt-row" onclick="showReceiptDetail(' + r.id + ')">' +
+        '<div class="top-row">' +
+          '<div class="vendor-name">' + escHtml(r.vendor) +
+            '<span class="status-badge ' + badgeClass + '">' + r.status + '</span>' +
+            (r.image_path ? '<span class="has-image-badge">&#128247; Photo</span>' : '') +
+          '</div>' +
+          '<div class="receipt-total">' + total + '</div>' +
+        '</div>' +
+        '<div class="receipt-meta">' + escHtml(r.project || 'No project') + ' &middot; ' + date +
+          (r.payment_method ? ' &middot; ' + escHtml(r.payment_method) : '') +
+        '</div>' +
+        itemsHtml +
+      '</div>';
+    });
+  }
+
+  document.getElementById('employeeContent').innerHTML = html;
+}
+
+function goBackFromEmployee() {
+  switchPage(previousPage || 'home');
+}
+
+/* ── Receipt Detail Modal ───────────────────────── */
+function showReceiptDetail(receiptId) {
+  var modal = document.getElementById('receiptModal');
+  var content = document.getElementById('receiptModalContent');
+  content.innerHTML = '<div class="spinner"></div>';
+  modal.classList.add('open');
+
+  fetch('/api/dashboard/receipt/' + receiptId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      renderReceiptDetail(data);
+    })
+    .catch(function(err) {
+      console.error('Failed to load receipt:', err);
+      content.innerHTML = '<div style="text-align:center;color:#DC2626;padding:24px;">Failed to load receipt</div>';
+    });
+}
+
+function renderReceiptDetail(data) {
+  var content = document.getElementById('receiptModalContent');
+
+  var total = data.total !== null ? '$' + data.total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--';
+  var badgeClass = 'badge-' + data.status;
+
+  var html = '';
+
+  // Header with close button
+  html += '<div class="receipt-modal-close">' +
+    '<h3>Receipt #' + data.id + '</h3>' +
+    '<button onclick="closeReceiptModal()">&times;</button>' +
+  '</div>';
+
+  // Receipt image
+  html += '<div class="receipt-image-container">';
+  if (data.has_image) {
+    html += '<img src="/receipt-image/' + data.id + '" alt="Receipt photo" onerror="this.parentNode.innerHTML=\'<div class=no-image>Image could not be loaded</div>\'">';
+  } else {
+    html += '<div class="no-image">&#128247; No receipt photo attached</div>';
+  }
+  html += '</div>';
+
+  // Detail rows
+  html += '<div style="margin-bottom:12px;">';
+  html += '<div class="receipt-detail-row"><span class="label">Vendor</span><span class="value">' + escHtml(data.vendor) + '</span></div>';
+  if (data.vendor_city || data.vendor_state) {
+    html += '<div class="receipt-detail-row"><span class="label">Location</span><span class="value">' + escHtml(data.vendor_city) + (data.vendor_state ? ', ' + escHtml(data.vendor_state) : '') + '</span></div>';
+  }
+  html += '<div class="receipt-detail-row"><span class="label">Total</span><span class="value" style="font-size:16px;font-weight:700;color:#1F4E79;">' + total + '</span></div>';
+  if (data.subtotal !== null) {
+    html += '<div class="receipt-detail-row"><span class="label">Subtotal</span><span class="value">$' + data.subtotal.toFixed(2) + '</span></div>';
+  }
+  if (data.tax !== null) {
+    html += '<div class="receipt-detail-row"><span class="label">Tax</span><span class="value">$' + data.tax.toFixed(2) + '</span></div>';
+  }
+  html += '<div class="receipt-detail-row"><span class="label">Date</span><span class="value">' + (data.date || 'N/A') + '</span></div>';
+  html += '<div class="receipt-detail-row"><span class="label">Employee</span><span class="value" style="cursor:pointer;color:#1F4E79;" onclick="closeReceiptModal();showEmployeeReceipts(' + data.employee_id + ')">' + escHtml(data.employee) + '</span></div>';
+  html += '<div class="receipt-detail-row"><span class="label">Project</span><span class="value">' + escHtml(data.project || 'Unassigned') + '</span></div>';
+  if (data.payment_method) {
+    html += '<div class="receipt-detail-row"><span class="label">Payment</span><span class="value">' + escHtml(data.payment_method) + '</span></div>';
+  }
+  html += '<div class="receipt-detail-row"><span class="label">Status</span><span class="value"><span class="status-badge ' + badgeClass + '">' + data.status + '</span></span></div>';
+  if (data.flag_reason) {
+    html += '<div class="receipt-detail-row"><span class="label">Flag Reason</span><span class="value" style="color:#DC2626;">' + escHtml(data.flag_reason) + '</span></div>';
+  }
+  if (data.created_at) {
+    html += '<div class="receipt-detail-row"><span class="label">Submitted</span><span class="value">' + escHtml(data.created_at) + '</span></div>';
+  }
+  html += '</div>';
+
+  // Line items table
+  if (data.line_items && data.line_items.length > 0) {
+    html += '<div class="receipt-line-items">' +
+      '<div class="card-title">Line Items</div>' +
+      '<table>' +
+        '<tr><th>Item</th><th>Qty</th><th class="right">Price</th></tr>';
+    data.line_items.forEach(function(item) {
+      var price = item.price !== null ? '$' + item.price.toFixed(2) : '--';
+      html += '<tr>' +
+        '<td>' + escHtml(item.name) + (item.category ? '<br><span style="font-size:11px;color:#9CA3AF;">' + escHtml(item.category) + '</span>' : '') + '</td>' +
+        '<td>' + (item.qty || 1) + '</td>' +
+        '<td class="right">' + price + '</td>' +
+      '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  content.innerHTML = html;
+}
+
+function closeReceiptModal() {
+  document.getElementById('receiptModal').classList.remove('open');
+}
+
+// Close receipt modal on overlay click
+document.addEventListener('click', function(e) {
+  if (e.target.id === 'receiptModal') {
+    closeReceiptModal();
+  }
+});
+
+/* ── Search Page ─────────────────────────────────── */
+function loadSearchFilters() {
+  fetch('/api/dashboard/search?per_page=0')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.filters) {
+        populateSelect('filterEmployee', data.filters.employees);
+        populateSelect('filterProject', data.filters.projects);
+        populateSelect('filterCategory', data.filters.categories);
+        filtersLoaded = true;
+      }
+    });
+}
+
+function populateSelect(id, items) {
+  var sel = document.getElementById(id);
+  items.forEach(function(item) {
+    var opt = document.createElement('option');
+    opt.value = item.id || item.name;
+    opt.textContent = item.name;
+    sel.appendChild(opt);
+  });
+}
+
+function toggleFilters() {
+  var panel = document.getElementById('filtersPanel');
+  var toggle = document.getElementById('filterToggle');
+  panel.classList.toggle('open');
+  toggle.classList.toggle('active');
+}
+
+function doSearch(page) {
+  searchPage = page || 1;
+  var params = new URLSearchParams();
+  params.set('page', searchPage);
+  params.set('per_page', '25');
+
+  var q = document.getElementById('searchInput').value.trim();
+  if (q) params.set('vendor', q);
+
+  var ds = document.getElementById('filterDateStart').value;
+  var de = document.getElementById('filterDateEnd').value;
+  if (ds) params.set('date_start', ds);
+  if (de) params.set('date_end', de);
+
+  var emp = document.getElementById('filterEmployee').value;
+  if (emp) params.set('employee_id', emp);
+
+  var proj = document.getElementById('filterProject').value;
+  if (proj) params.set('project', proj);
+
+  var cat = document.getElementById('filterCategory').value;
+  if (cat) params.set('category', cat);
+
+  var status = document.getElementById('filterStatus').value;
+  if (status) params.set('status', status);
+
+  var minAmt = document.getElementById('filterAmountMin').value;
+  var maxAmt = document.getElementById('filterAmountMax').value;
+  if (minAmt) params.set('amount_min', minAmt);
+  if (maxAmt) params.set('amount_max', maxAmt);
+
+  var sort = document.getElementById('filterSort').value;
+  if (sort) params.set('sort', sort);
+
+  fetch('/api/dashboard/search?' + params.toString())
+    .then(function(r) { return r.json(); })
+    .then(function(data) { renderSearchResults(data); });
+}
+
+function renderSearchResults(data) {
+  document.getElementById('resultsCount').textContent = data.total + ' result' + (data.total !== 1 ? 's' : '') + ' found';
+
+  var html = '';
+  data.results.forEach(function(r) {
+    var total = r.total !== null ? '$' + r.total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--';
+    var date = r.date ? formatDateShort(r.date) : '';
+    var badgeClass = 'badge-' + r.status;
+
+    var itemsHtml = '';
+    if (r.line_items && r.line_items.length > 0) {
+      var names = r.line_items.map(function(i) { return escHtml(i.name); }).join(', ');
+      itemsHtml = '<div class="result-items">' + names + '</div>';
+    }
+
+    html += '<div class="search-result" style="cursor:pointer;" onclick="showReceiptDetail(' + r.id + ')">' +
+      '<div class="top-row">' +
+        '<div class="vendor-name">' + escHtml(r.vendor) + '<span class="status-badge ' + badgeClass + '">' + r.status + '</span></div>' +
+        '<div class="result-total">' + total + '</div>' +
+      '</div>' +
+      '<div class="result-meta">' + escHtml(r.employee) + (r.project ? ' &middot; ' + escHtml(r.project) : '') + (date ? ' &middot; ' + date : '') + '</div>' +
+      itemsHtml +
+    '</div>';
+  });
+  document.getElementById('searchResults').innerHTML = html || '<div style="text-align:center;color:#9CA3AF;padding:24px;">No results found</div>';
+
+  // Pagination
+  var pag = document.getElementById('pagination');
+  if (data.total_pages > 1) {
+    pag.style.display = 'flex';
+    document.getElementById('prevPage').disabled = (data.page <= 1);
+    document.getElementById('nextPage').disabled = (data.page >= data.total_pages);
+    document.getElementById('pageInfo').textContent = 'Page ' + data.page + ' of ' + data.total_pages;
+  } else {
+    pag.style.display = 'none';
+  }
+}
+
+function changePage(delta) {
+  doSearch(searchPage + delta);
+}
+
+function clearFilters() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('filterDateStart').value = '';
+  document.getElementById('filterDateEnd').value = '';
+  document.getElementById('filterEmployee').value = '';
+  document.getElementById('filterProject').value = '';
+  document.getElementById('filterCategory').value = '';
+  document.getElementById('filterStatus').value = '';
+  document.getElementById('filterAmountMin').value = '';
+  document.getElementById('filterAmountMax').value = '';
+  document.getElementById('filterSort').value = 'date';
+  document.getElementById('searchResults').innerHTML = '';
+  document.getElementById('resultsCount').textContent = '';
+  document.getElementById('pagination').style.display = 'none';
+}
+
+function exportFiltered() {
+  var params = new URLSearchParams();
+  var ds = document.getElementById('filterDateStart').value;
+  var de = document.getElementById('filterDateEnd').value;
+  if (ds) params.set('week_start', ds);
+  if (de) params.set('week_end', de);
+
+  var emp = document.getElementById('filterEmployee').value;
+  if (emp) params.set('employee_id', emp);
+
+  var proj = document.getElementById('filterProject').value;
+  if (proj) params.set('project', proj);
+
+  var cat = document.getElementById('filterCategory').value;
+  if (cat) params.set('category', cat);
+
+  window.location.href = '/export/quickbooks?' + params.toString();
+}
+
+/* ── Helpers ─────────────────────────────────────── */
+function formatDateRange(start, end) {
+  var s = new Date(start + 'T00:00:00');
+  var e = new Date(end + 'T00:00:00');
+  var opts = { month: 'short', day: 'numeric' };
+  return s.toLocaleDateString('en-US', opts) + ' \u2013 ' + e.toLocaleDateString('en-US', opts) + ', ' + s.getFullYear();
+}
+
+function formatDateShort(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr + 'T00:00:00');
+  var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  return days[d.getDay()] + ' ' + (d.getMonth()+1) + '/' + d.getDate();
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escAttr(str) {
+  return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function showToast(msg) {
+  var toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(function() { toast.classList.remove('show'); }, 2500);
+}
+</script>
+</body>
+</html>
