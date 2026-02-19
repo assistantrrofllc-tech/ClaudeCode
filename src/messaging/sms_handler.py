@@ -18,6 +18,7 @@ import re
 
 from src.database.connection import get_db
 from src.services.image_store import download_and_save_image
+from src.services.ocr import extract_receipt_data, format_confirmation_message
 
 log = logging.getLogger(__name__)
 
@@ -201,10 +202,10 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
     """Process a new receipt submission — photo + optional project name.
 
     Flow:
-    1. Download and save the image          (this step)
-    2. Send image to GPT-4o-mini for OCR    (Step 3)
-    3. Format confirmation via Ollama        (Step 4)
-    4. Send confirmation, await YES/NO       (Step 5)
+    1. Download and save the image
+    2. Send image to GPT-4o-mini Vision for OCR
+    3. Format confirmation message from OCR data
+    4. Send confirmation, await YES/NO reply
     """
     # Download the first image (receipts are one photo per text)
     image_url = media[0]["url"]
@@ -216,25 +217,77 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
             "Could you try sending it again?"
         )
 
-    # Create a pending receipt record
+    # Run OCR on the downloaded image
+    ocr_data = extract_receipt_data(image_path)
+
+    if not ocr_data:
+        # OCR failed — save the receipt as flagged so it's not lost
+        cursor = db.execute(
+            "INSERT INTO receipts (employee_id, image_path, matched_project_name, status, flag_reason) "
+            "VALUES (?, ?, ?, 'flagged', 'OCR processing failed')",
+            (employee_id, image_path, body if body else None),
+        )
+        db.commit()
+        log.warning("OCR failed for employee %d, image: %s", employee_id, image_path)
+        return (
+            f"Sorry {first_name}, I couldn't read that receipt clearly. "
+            "Could you try taking another photo with better lighting? "
+            "Make sure the whole receipt is visible and flat."
+        )
+
+    # Create the receipt record with OCR data
+    project_name = body if body else None
     cursor = db.execute(
-        "INSERT INTO receipts (employee_id, image_path, matched_project_name, status) VALUES (?, ?, ?, 'pending')",
-        (employee_id, image_path, body if body else None),
+        """INSERT INTO receipts
+           (employee_id, image_path, vendor_name, vendor_city, vendor_state,
+            purchase_date, subtotal, tax, total, payment_method,
+            matched_project_name, raw_ocr_json, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+        (
+            employee_id,
+            image_path,
+            ocr_data.get("vendor_name"),
+            ocr_data.get("vendor_city"),
+            ocr_data.get("vendor_state"),
+            ocr_data.get("purchase_date"),
+            ocr_data.get("subtotal"),
+            ocr_data.get("tax"),
+            ocr_data.get("total"),
+            ocr_data.get("payment_method"),
+            project_name,
+            json.dumps(ocr_data),
+        ),
     )
     receipt_id = cursor.lastrowid
-    db.commit()
 
-    log.info("Receipt #%d created for employee %d, image: %s", receipt_id, employee_id, image_path)
+    # Save line items
+    for item in ocr_data.get("line_items", []):
+        db.execute(
+            """INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                receipt_id,
+                item.get("item_name", "Unknown item"),
+                item.get("quantity", 1),
+                item.get("unit_price"),
+                item.get("extended_price"),
+            ),
+        )
+
+    db.commit()
+    log.info(
+        "Receipt #%d created for employee %d — %s $%.2f, %d items",
+        receipt_id, employee_id,
+        ocr_data.get("vendor_name", "?"),
+        ocr_data.get("total") or 0,
+        len(ocr_data.get("line_items", [])),
+    )
 
     # Set conversation state to awaiting confirmation
-    # Steps 3-4 will process OCR and format the confirmation before this reply
     _set_conversation_state(db, employee_id, "awaiting_confirmation", receipt_id)
 
-    # Placeholder — Steps 3+4 will replace this with actual OCR confirmation
-    return (
-        f"Got it, {first_name}! I received your receipt photo. "
-        "Processing it now — I'll send you the details to confirm shortly."
-    )
+    # Format the confirmation message from OCR data
+    return format_confirmation_message(ocr_data, first_name, project_name)
 
 
 # ── Confirmation flow (YES/NO replies) ──────────────────────
