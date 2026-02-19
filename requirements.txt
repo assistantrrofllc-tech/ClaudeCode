@@ -19,5 +19,8 @@ python-Levenshtein>=0.25
 # Environment variable management
 python-dotenv>=1.0
 
+# Production WSGI server
+gunicorn>=21.2
+
 # CSV export (Step 13) — stdlib, listed for clarity
 # csv (built-in)
