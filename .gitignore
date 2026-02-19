@@ -1,0 +1,42 @@
+# Environment
+.env
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Database
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Receipt images (stored locally, not in repo)
+storage/receipts/*.jpg
+storage/receipts/*.jpeg
+storage/receipts/*.png
+storage/receipts/*.gif
+storage/receipts/*.webp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

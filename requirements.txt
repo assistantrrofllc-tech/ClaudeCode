@@ -1,0 +1,23 @@
+# CrewLedger — Phase 1 Dependencies
+
+# Web framework
+flask>=3.0
+
+# Twilio SMS/MMS
+twilio>=9.0
+
+# HTTP requests (downloading MMS images from Twilio)
+requests>=2.31
+
+# OpenAI Vision API (Step 3)
+openai>=1.12
+
+# Fuzzy string matching (Step 8)
+thefuzz>=0.22
+python-Levenshtein>=0.25
+
+# Environment variable management
+python-dotenv>=1.0
+
+# CSV export (Step 13) — stdlib, listed for clarity
+# csv (built-in)
