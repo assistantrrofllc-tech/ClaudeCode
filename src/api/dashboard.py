@@ -1,13 +1,15 @@
 """
 Dashboard routes — serves the web UI and receipt images.
 
-All management views: home, ledger, employee management.
+All management views: home, ledger, employee management, settings, projects.
 Receipt images served from local storage with path traversal protection.
 Export endpoints: QuickBooks CSV, Google Sheets CSV, Excel (.xlsx).
+Receipt editing with audit trail. Notes support throughout.
 """
 
 import csv
 import io
+import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -261,6 +263,101 @@ def api_activate_employee(employee_id):
         db.close()
 
 
+# ── Project Management ────────────────────────────────────
+
+
+@dashboard_bp.route("/api/projects", methods=["GET"])
+def api_projects():
+    """List all projects as JSON."""
+    db = get_db()
+    try:
+        rows = db.execute("""
+            SELECT p.*,
+                   (SELECT COUNT(*) FROM receipts r WHERE r.project_id = p.id) as receipt_count,
+                   (SELECT COALESCE(SUM(r.total), 0) FROM receipts r WHERE r.project_id = p.id) as total_spend
+            FROM projects p ORDER BY p.name
+        """).fetchall()
+        return jsonify([dict(r) for r in rows])
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/projects", methods=["POST"])
+def api_add_project():
+    """Add a new project."""
+    data = request.get_json()
+    if not data or not data.get("name"):
+        return jsonify({"error": "Project name is required"}), 400
+
+    db = get_db()
+    try:
+        existing = db.execute("SELECT id FROM projects WHERE name = ?", (data["name"],)).fetchone()
+        if existing:
+            return jsonify({"error": "Project name already exists"}), 409
+
+        db.execute(
+            """INSERT INTO projects (project_code, name, address, city, state, status, start_date, end_date, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                data.get("project_code"),
+                data["name"],
+                data.get("address"),
+                data.get("city"),
+                data.get("state"),
+                data.get("status", "active"),
+                data.get("start_date"),
+                data.get("end_date"),
+                data.get("notes"),
+            ),
+        )
+        db.commit()
+        return jsonify({"status": "created", "name": data["name"]}), 201
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/projects/<int:project_id>", methods=["PUT"])
+def api_update_project(project_id):
+    """Update a project."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    allowed = {"project_code", "name", "address", "city", "state", "status", "start_date", "end_date", "notes"}
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({"error": "No valid fields to update"}), 400
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [project_id]
+
+    db = get_db()
+    try:
+        db.execute(f"UPDATE projects SET {set_clause}, updated_at = datetime('now') WHERE id = ?", values)
+        db.commit()
+        return jsonify({"status": "updated"})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/projects/<int:project_id>", methods=["GET"])
+def api_project_detail(project_id):
+    """Get a single project."""
+    db = get_db()
+    try:
+        row = db.execute("""
+            SELECT p.*,
+                   (SELECT COUNT(*) FROM receipts r WHERE r.project_id = p.id) as receipt_count,
+                   (SELECT COALESCE(SUM(r.total), 0) FROM receipts r WHERE r.project_id = p.id) as total_spend
+            FROM projects p WHERE p.id = ?
+        """, (project_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Project not found"}), 404
+        return jsonify(dict(row))
+    finally:
+        db.close()
+
+
 # ── Unknown Contacts ─────────────────────────────────────
 
 
@@ -301,13 +398,18 @@ def ledger_page():
 
 @dashboard_bp.route("/settings")
 def settings_page():
-    """Email settings page."""
+    """Settings page — email, projects, links to employee management."""
     db = get_db()
     try:
         rows = db.execute("SELECT key, value FROM email_settings").fetchall()
         settings = {r["key"]: r["value"] for r in rows}
         employees = db.execute("SELECT id, first_name FROM employees ORDER BY first_name").fetchall()
-        projects = db.execute("SELECT id, name FROM projects WHERE status = 'active' ORDER BY name").fetchall()
+        projects = db.execute("""
+            SELECT p.*,
+                   (SELECT COUNT(*) FROM receipts r WHERE r.project_id = p.id) as receipt_count,
+                   (SELECT COALESCE(SUM(r.total), 0) FROM receipts r WHERE r.project_id = p.id) as total_spend
+            FROM projects p ORDER BY p.name
+        """).fetchall()
         return render_template(
             "settings.html",
             settings=settings,
@@ -549,7 +651,7 @@ def edit_receipt(receipt_id):
     data = request.get_json(silent=True) or {}
     db = get_db()
     try:
-        receipt = db.execute("SELECT id, status FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        receipt = db.execute("SELECT * FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
         if not receipt:
             return jsonify({"error": "Receipt not found"}), 404
         updatable = {
@@ -559,6 +661,14 @@ def edit_receipt(receipt_id):
             "matched_project_name": data.get("project"),
         }
         updates = {k: v for k, v in updatable.items() if v is not None}
+        # Log audit trail for each changed field
+        for field, new_val in updates.items():
+            old_val = receipt[field]
+            if str(old_val) != str(new_val):
+                db.execute(
+                    "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
+                    (receipt_id, field, str(old_val) if old_val is not None else None, str(new_val), "dashboard"),
+                )
         if updates:
             set_clause = ", ".join(f"{k} = ?" for k in updates)
             values = list(updates.values()) + [receipt_id]
@@ -567,6 +677,100 @@ def edit_receipt(receipt_id):
             db.execute("UPDATE receipts SET status = 'confirmed', confirmed_at = datetime('now') WHERE id = ?", (receipt_id,))
         db.commit()
         log.info("Receipt #%d edited and approved via dashboard", receipt_id)
+        return jsonify({"status": "updated", "id": receipt_id})
+    finally:
+        db.close()
+
+
+# ── Receipt Editing (General — with audit trail) ────────────
+
+
+@dashboard_bp.route("/api/receipts/<int:receipt_id>/edit", methods=["POST"])
+def api_edit_receipt(receipt_id):
+    """Edit any receipt's fields with full audit trail.
+
+    Accepts JSON with any of: vendor_name, vendor_city, vendor_state,
+    purchase_date, subtotal, tax, total, payment_method, notes,
+    matched_project_name, project_id.
+    """
+    data = request.get_json(silent=True) or {}
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    db = get_db()
+    try:
+        receipt = db.execute("SELECT * FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        if not receipt:
+            return jsonify({"error": "Receipt not found"}), 404
+
+        allowed_fields = {
+            "vendor_name", "vendor_city", "vendor_state", "purchase_date",
+            "subtotal", "tax", "total", "payment_method", "notes",
+            "matched_project_name", "project_id",
+        }
+        updates = {k: v for k, v in data.items() if k in allowed_fields}
+        if not updates:
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        # Log each change to audit trail
+        for field, new_val in updates.items():
+            old_val = receipt[field]
+            if str(old_val) != str(new_val):
+                db.execute(
+                    "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
+                    (receipt_id, field, str(old_val) if old_val is not None else None, str(new_val), "dashboard"),
+                )
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [receipt_id]
+        db.execute(f"UPDATE receipts SET {set_clause} WHERE id = ?", values)
+        db.commit()
+
+        log.info("Receipt #%d edited via dashboard (%s)", receipt_id, ", ".join(updates.keys()))
+        return jsonify({"status": "updated", "id": receipt_id, "fields_changed": list(updates.keys())})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/receipts/<int:receipt_id>/edits", methods=["GET"])
+def api_receipt_edit_history(receipt_id):
+    """Get the audit trail for a receipt."""
+    db = get_db()
+    try:
+        receipt = db.execute("SELECT id FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        if not receipt:
+            return jsonify({"error": "Receipt not found"}), 404
+
+        edits = db.execute(
+            "SELECT * FROM receipt_edits WHERE receipt_id = ? ORDER BY edited_at DESC",
+            (receipt_id,),
+        ).fetchall()
+        return jsonify({"receipt_id": receipt_id, "edits": [dict(e) for e in edits]})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/receipts/<int:receipt_id>/notes", methods=["PUT"])
+def api_update_receipt_notes(receipt_id):
+    """Update the notes field on a receipt."""
+    data = request.get_json(silent=True) or {}
+    notes = data.get("notes", "")
+
+    db = get_db()
+    try:
+        receipt = db.execute("SELECT id, notes FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        if not receipt:
+            return jsonify({"error": "Receipt not found"}), 404
+
+        old_notes = receipt["notes"]
+        if old_notes != notes:
+            db.execute(
+                "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
+                (receipt_id, "notes", old_notes, notes, "dashboard"),
+            )
+
+        db.execute("UPDATE receipts SET notes = ? WHERE id = ?", (notes, receipt_id))
+        db.commit()
         return jsonify({"status": "updated", "id": receipt_id})
     finally:
         db.close()
@@ -728,7 +932,7 @@ def _export_csv(receipts: list) -> Response:
     """Export as standard CSV (Google Sheets compatible)."""
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Date", "Employee", "Vendor", "Project", "Subtotal", "Tax", "Total", "Payment Method", "Status"])
+    writer.writerow(["Date", "Employee", "Vendor", "Project", "Subtotal", "Tax", "Total", "Payment Method", "Status", "Notes"])
     for r in receipts:
         writer.writerow([
             r.get("purchase_date", ""),
@@ -740,6 +944,7 @@ def _export_csv(receipts: list) -> Response:
             r.get("total", ""),
             r.get("payment_method", ""),
             r.get("status", ""),
+            r.get("notes", ""),
         ])
 
     resp = Response(output.getvalue(), mimetype="text/csv")
@@ -754,7 +959,10 @@ def _export_quickbooks_csv(receipts: list) -> Response:
     writer.writerow(["Date", "Vendor", "Account", "Amount", "Memo", "Payment Method"])
     for r in receipts:
         project = r.get("project_name") or r.get("matched_project_name", "")
+        notes = r.get("notes", "")
         memo = f"Employee: {r.get('employee_name', '')} | Project: {project}"
+        if notes:
+            memo += f" | Notes: {notes}"
         writer.writerow([
             r.get("purchase_date", ""),
             r.get("vendor_name", ""),
@@ -779,7 +987,7 @@ def _export_excel(receipts: list) -> Response:
     ws.title = "CrewLedger Export"
 
     # Header row
-    headers = ["Date", "Employee", "Vendor", "Project", "Subtotal", "Tax", "Total", "Payment Method", "Status"]
+    headers = ["Date", "Employee", "Vendor", "Project", "Subtotal", "Tax", "Total", "Payment Method", "Status", "Notes"]
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
     for col, header in enumerate(headers, 1):
@@ -799,6 +1007,7 @@ def _export_excel(receipts: list) -> Response:
         ws.cell(row=row_idx, column=7, value=r.get("total") or 0).number_format = '#,##0.00'
         ws.cell(row=row_idx, column=8, value=r.get("payment_method", ""))
         ws.cell(row=row_idx, column=9, value=r.get("status", ""))
+        ws.cell(row=row_idx, column=10, value=r.get("notes", ""))
 
     # Auto-width columns
     for col in ws.columns:
@@ -1017,4 +1226,7 @@ def _row_to_dict(row) -> dict:
         d["image_url"] = f"/receipts/image/{filename}"
     else:
         d["image_url"] = None
+    # Ensure notes is always present (may be None)
+    if "notes" not in d:
+        d["notes"] = None
     return d

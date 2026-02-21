@@ -33,11 +33,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_phone ON employees(phone_number)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS projects (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_code    TEXT    UNIQUE,
     name            TEXT    UNIQUE NOT NULL,
     address         TEXT,
     city            TEXT,
     state           TEXT,
     status          TEXT    DEFAULT 'active' CHECK(status IN ('active', 'completed', 'on_hold')),
+    start_date      TEXT,
+    end_date        TEXT,
+    notes           TEXT,
     created_at      TEXT    DEFAULT (datetime('now')),
     updated_at      TEXT    DEFAULT (datetime('now'))
 );
@@ -91,6 +95,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     is_missed_receipt     INTEGER DEFAULT 0,
     matched_project_name  TEXT,
     fuzzy_match_score     REAL,
+    notes                 TEXT,
     raw_ocr_json          TEXT,
     created_at            TEXT    DEFAULT (datetime('now')),
     confirmed_at          TEXT,
@@ -189,3 +194,22 @@ INSERT OR IGNORE INTO email_settings (key, value) VALUES
     ('include_scope', 'all'),
     ('include_filter', ''),
     ('enabled', '1');
+
+-- ============================================================
+-- RECEIPT EDITS (Audit Trail)
+-- Logs every field change made to a receipt after initial OCR.
+-- Preserves accountability and original OCR data integrity.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS receipt_edits (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    receipt_id      INTEGER NOT NULL,
+    field_changed   TEXT    NOT NULL,
+    old_value       TEXT,
+    new_value       TEXT,
+    edited_at       TEXT    DEFAULT (datetime('now')),
+    edited_by       TEXT    DEFAULT 'dashboard',
+    FOREIGN KEY (receipt_id) REFERENCES receipts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_receipt_edits_receipt ON receipt_edits(receipt_id);
+CREATE INDEX IF NOT EXISTS idx_receipt_edits_date ON receipt_edits(edited_at);

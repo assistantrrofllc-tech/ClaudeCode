@@ -54,14 +54,15 @@ def setup_test_db():
     db.execute("INSERT INTO projects (id, name) VALUES (1, 'Sparrow')")
     db.execute("INSERT INTO projects (id, name) VALUES (2, 'Hawk')")
 
-    # Receipt 1: Omar, confirmed, with image
+    # Receipt 1: Omar, confirmed, with image and notes
     db.execute("""INSERT INTO receipts
         (id, employee_id, vendor_name, vendor_city, vendor_state, purchase_date,
          subtotal, tax, total, payment_method, status, project_id, matched_project_name,
-         image_path, created_at)
+         image_path, notes, created_at)
         VALUES (1, 1, 'Ace Home & Supply', 'Kissimmee', 'FL', '2026-02-09',
                 94.57, 6.07, 100.64, 'VISA 1234', 'confirmed', 1, 'Sparrow',
                 '/tmp/test_receipt_images/omar_20260218_143052.jpg',
+                'Propane for site heater',
                 '2026-02-09 10:30:00')""")
 
     # Receipt 2: Omar, confirmed
@@ -679,6 +680,283 @@ def test_search_pagination():
     assert data["total"] == 5
     assert data["page"] == 1
     assert data["total_pages"] == 3
+
+
+# ── Receipt Editing with Audit Trail ─────────────────────
+
+
+def test_api_edit_receipt():
+    """API edits receipt fields with audit trail."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/receipts/1/edit", json={
+        "vendor_name": "Ace Hardware",
+        "total": 105.00,
+    })
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "updated"
+    assert "vendor_name" in data["fields_changed"]
+    assert "total" in data["fields_changed"]
+
+    # Verify the DB was updated
+    db = get_db(TEST_DB)
+    receipt = db.execute("SELECT * FROM receipts WHERE id = 1").fetchone()
+    assert receipt["vendor_name"] == "Ace Hardware"
+    assert receipt["total"] == 105.00
+
+    # Verify audit trail
+    edits = db.execute("SELECT * FROM receipt_edits WHERE receipt_id = 1 ORDER BY id").fetchall()
+    assert len(edits) == 2
+    fields = {e["field_changed"]: e for e in edits}
+    assert "vendor_name" in fields
+    assert fields["vendor_name"]["old_value"] == "Ace Home & Supply"
+    assert fields["vendor_name"]["new_value"] == "Ace Hardware"
+    assert "total" in fields
+    db.close()
+
+
+def test_api_edit_receipt_not_found():
+    """API returns 404 for editing non-existent receipt."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/receipts/999/edit", json={"vendor_name": "X"})
+    assert resp.status_code == 404
+
+
+def test_api_edit_receipt_no_data():
+    """API returns 400 when no data provided."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/receipts/1/edit", json={})
+    assert resp.status_code == 400
+
+
+def test_api_edit_receipt_invalid_fields():
+    """API rejects invalid fields."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/receipts/1/edit", json={"hacker_field": "evil"})
+    assert resp.status_code == 400
+
+
+def test_api_receipt_edit_history():
+    """API returns audit trail for a receipt."""
+    setup_test_db()
+    client = get_test_client()
+
+    # Make an edit first
+    client.post("/api/receipts/1/edit", json={"vendor_name": "Ace Hardware"})
+
+    resp = client.get("/api/receipts/1/edits")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["receipt_id"] == 1
+    assert len(data["edits"]) == 1
+    assert data["edits"][0]["field_changed"] == "vendor_name"
+    assert data["edits"][0]["edited_by"] == "dashboard"
+
+
+def test_api_receipt_edit_history_empty():
+    """API returns empty list for receipt with no edits."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/api/receipts/2/edits")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["edits"] == []
+
+
+def test_api_receipt_edit_history_not_found():
+    """API returns 404 for non-existent receipt edit history."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/api/receipts/999/edits")
+    assert resp.status_code == 404
+
+
+def test_flagged_edit_creates_audit_trail():
+    """Editing a flagged receipt also creates audit entries."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/dashboard/flagged/3/edit", json={
+        "vendor": "QuikTrip #45",
+        "total": 38.50,
+    })
+    assert resp.status_code == 200
+
+    db = get_db(TEST_DB)
+    edits = db.execute("SELECT * FROM receipt_edits WHERE receipt_id = 3 ORDER BY id").fetchall()
+    assert len(edits) >= 1  # At least vendor change logged
+    vendors = [e for e in edits if e["field_changed"] == "vendor_name"]
+    assert len(vendors) == 1
+    assert vendors[0]["old_value"] == "QuikTrip"
+    assert vendors[0]["new_value"] == "QuikTrip #45"
+    db.close()
+
+
+# ── Notes Field ──────────────────────────────────────────
+
+
+def test_receipt_detail_includes_notes():
+    """Receipt detail API includes notes field."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/api/receipts/1")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["notes"] == "Propane for site heater"
+
+
+def test_api_update_notes():
+    """API updates notes on a receipt."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.put("/api/receipts/1/notes", json={"notes": "Updated note"})
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "updated"
+
+    # Verify
+    resp2 = client.get("/api/receipts/1")
+    assert resp2.get_json()["notes"] == "Updated note"
+
+
+def test_api_update_notes_creates_audit():
+    """Updating notes creates an audit trail entry."""
+    setup_test_db()
+    client = get_test_client()
+    client.put("/api/receipts/1/notes", json={"notes": "New note"})
+
+    db = get_db(TEST_DB)
+    edits = db.execute("SELECT * FROM receipt_edits WHERE receipt_id = 1 AND field_changed = 'notes'").fetchall()
+    assert len(edits) == 1
+    assert edits[0]["old_value"] == "Propane for site heater"
+    assert edits[0]["new_value"] == "New note"
+    db.close()
+
+
+def test_api_update_notes_not_found():
+    """API returns 404 for notes on non-existent receipt."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.put("/api/receipts/999/notes", json={"notes": "X"})
+    assert resp.status_code == 404
+
+
+def test_export_csv_includes_notes():
+    """CSV export includes Notes column."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/api/receipts/export?format=csv")
+    text = resp.data.decode()
+    assert "Notes" in text
+    assert "Propane for site heater" in text
+
+
+# ── Project CRUD ─────────────────────────────────────────
+
+
+def test_api_projects_list():
+    """API returns list of projects."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/api/projects")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data) == 2
+    names = [p["name"] for p in data]
+    assert "Sparrow" in names
+    assert "Hawk" in names
+
+
+def test_api_add_project():
+    """API adds a new project."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/projects", json={
+        "name": "Eagle",
+        "project_code": "EGL-001",
+        "city": "Orlando",
+        "state": "FL",
+        "status": "active",
+    })
+    assert resp.status_code == 201
+    data = resp.get_json()
+    assert data["status"] == "created"
+
+    db = get_db(TEST_DB)
+    proj = db.execute("SELECT * FROM projects WHERE name = 'Eagle'").fetchone()
+    assert proj is not None
+    assert proj["project_code"] == "EGL-001"
+    assert proj["city"] == "Orlando"
+    db.close()
+
+
+def test_api_add_project_duplicate():
+    """API rejects duplicate project name."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/projects", json={"name": "Sparrow"})
+    assert resp.status_code == 409
+
+
+def test_api_add_project_missing_name():
+    """API rejects project with missing name."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/projects", json={"city": "Tampa"})
+    assert resp.status_code == 400
+
+
+def test_api_update_project():
+    """API updates a project."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.put("/api/projects/1", json={
+        "status": "completed",
+        "notes": "Job finished",
+    })
+    assert resp.status_code == 200
+
+    db = get_db(TEST_DB)
+    proj = db.execute("SELECT * FROM projects WHERE id = 1").fetchone()
+    assert proj["status"] == "completed"
+    assert proj["notes"] == "Job finished"
+    db.close()
+
+
+def test_api_project_detail():
+    """API returns single project with receipt stats."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/api/projects/1")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["name"] == "Sparrow"
+    assert "receipt_count" in data
+    assert "total_spend" in data
+
+
+def test_api_project_not_found():
+    """API returns 404 for non-existent project."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/api/projects/999")
+    assert resp.status_code == 404
+
+
+# ── Settings Page (enhanced) ─────────────────────────────
+
+
+def test_settings_page_shows_projects():
+    """Settings page renders with project list."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert b"Projects" in resp.data
+    assert b"Sparrow" in resp.data
+    assert b"Employee Management" in resp.data
 
 
 if __name__ == "__main__":
