@@ -33,6 +33,7 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "src" / "database" / "sch
 
 def setup_test_db():
     """Create a fresh test database."""
+    os.environ["DATABASE_PATH"] = TEST_DB
     if Path(TEST_DB).exists():
         Path(TEST_DB).unlink()
     db = get_db(TEST_DB)
@@ -70,48 +71,55 @@ def test_health_endpoint():
     print("  PASS: health endpoint")
 
 
-def test_new_employee_no_name():
-    """First text from unknown number, no name → ask for name."""
+def test_unknown_number_silenced():
+    """Unknown number texts in → empty TwiML (no response), logged in unknown_contacts."""
     setup_test_db()
     client = get_test_client()
     resp = twilio_post(client, body="hello")
     assert resp.status_code == 200
-    assert b"first time" in resp.data
-    assert b"your name" in resp.data.lower() or b"What" in resp.data
-    print("  PASS: new employee, no name → asks for name")
+    # Empty TwiML — no <Message> tag, complete silence
+    assert b"<Message>" not in resp.data
+    assert b"<Response />" in resp.data or b"<Response>" in resp.data
+
+    # Contact attempt should be logged
+    db = get_db(TEST_DB)
+    row = db.execute("SELECT * FROM unknown_contacts WHERE phone_number = '+14075551234'").fetchone()
+    assert row is not None
+    assert row["message_body"] == "hello"
+    assert row["has_media"] == 0
+    db.close()
+    print("  PASS: unknown number → silenced and logged")
 
 
-def test_new_employee_with_name():
-    """First text with intro → auto-registers."""
+def test_unknown_number_with_media_silenced():
+    """Unknown number sends a photo → silenced, flagged with has_media=1."""
     setup_test_db()
     client = get_test_client()
-    resp = twilio_post(client, body="This is Omar, driver for Mario's crew")
+    resp = twilio_post(client, body="Project Sparrow", num_media=1, media_url="https://example.com/img.jpg")
     assert resp.status_code == 200
-    assert b"Omar" in resp.data
-    assert b"Welcome" in resp.data
+    assert b"<Message>" not in resp.data
 
-    # Verify DB
     db = get_db(TEST_DB)
-    emp = db.execute("SELECT * FROM employees WHERE phone_number = '+14075551234'").fetchone()
-    assert emp is not None
-    assert emp["first_name"] == "Omar"
+    row = db.execute("SELECT * FROM unknown_contacts WHERE phone_number = '+14075551234'").fetchone()
+    assert row is not None
+    assert row["has_media"] == 1
     db.close()
-    print("  PASS: new employee with intro → registered as Omar")
+    print("  PASS: unknown number with photo → silenced, media flagged")
 
 
-def test_new_employee_just_name():
-    """First text is just a name → registers."""
+def test_inactive_employee_silenced():
+    """Inactive employee texts in → silenced, no response."""
     setup_test_db()
-    client = get_test_client()
-    resp = twilio_post(client, body="Omar")
-    assert resp.status_code == 200
-    assert b"Omar" in resp.data
-
     db = get_db(TEST_DB)
-    emp = db.execute("SELECT * FROM employees WHERE phone_number = '+14075551234'").fetchone()
-    assert emp["first_name"] == "Omar"
+    db.execute("INSERT INTO employees (phone_number, first_name, is_active) VALUES ('+14075551234', 'Omar', 0)")
+    db.commit()
     db.close()
-    print("  PASS: new employee, just a name → registered")
+
+    client = get_test_client()
+    resp = twilio_post(client, body="hello")
+    assert resp.status_code == 200
+    assert b"<Message>" not in resp.data
+    print("  PASS: inactive employee → silenced")
 
 
 def test_receipt_submission_with_photo():
@@ -334,24 +342,41 @@ def test_unrecognized_message():
     print("  PASS: unrecognized message → helpful hint")
 
 
-def test_twiml_response_format():
-    """Response is valid TwiML XML."""
+def test_twiml_response_format_known_employee():
+    """Known employee gets valid TwiML XML with <Message>."""
     setup_test_db()
+    db = get_db(TEST_DB)
+    db.execute("INSERT INTO employees (phone_number, first_name) VALUES ('+14075551234', 'Omar')")
+    db.commit()
+    db.close()
+
     client = get_test_client()
     resp = twilio_post(client, body="Hello")
     assert resp.status_code == 200
     assert resp.content_type == "text/xml"
     assert b"<Response>" in resp.data
     assert b"<Message>" in resp.data
-    print("  PASS: response is valid TwiML")
+    print("  PASS: known employee → valid TwiML with message")
+
+
+def test_twiml_response_format_unknown():
+    """Unknown number gets valid TwiML XML WITHOUT <Message>."""
+    setup_test_db()
+    client = get_test_client()
+    resp = twilio_post(client, body="Hello")
+    assert resp.status_code == 200
+    assert resp.content_type == "text/xml"
+    assert b"<Response" in resp.data
+    assert b"<Message>" not in resp.data
+    print("  PASS: unknown number → valid TwiML, no message")
 
 
 if __name__ == "__main__":
     print("Testing Twilio webhook and SMS handler...\n")
     test_health_endpoint()
-    test_new_employee_no_name()
-    test_new_employee_with_name()
-    test_new_employee_just_name()
+    test_unknown_number_silenced()
+    test_unknown_number_with_media_silenced()
+    test_inactive_employee_silenced()
     test_receipt_submission_with_photo()
     test_receipt_submission_ocr_failure()
     test_confirmation_yes()
@@ -359,7 +384,8 @@ if __name__ == "__main__":
     test_missed_receipt()
     test_missed_receipt_details()
     test_unrecognized_message()
-    test_twiml_response_format()
+    test_twiml_response_format_known_employee()
+    test_twiml_response_format_unknown()
     print("\nAll tests passed!")
 
     # Cleanup

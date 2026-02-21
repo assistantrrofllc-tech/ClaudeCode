@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% set active_page = "settings" %}
+{% block title %}CrewLedger — Email Settings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Email Report Settings</h1>
+</div>
+
+<div class="card" style="max-width: 640px;">
+    <form id="settings-form" onsubmit="saveSettings(event)">
+        <!-- Enable/Disable -->
+        <div class="form-row" style="grid-template-columns: 1fr;">
+            <div class="form-group">
+                <label>Email Reports</label>
+                <select id="set-enabled">
+                    <option value="1" {% if settings.get('enabled') == '1' %}selected{% endif %}>Enabled</option>
+                    <option value="0" {% if settings.get('enabled') == '0' %}selected{% endif %}>Disabled (Off)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Recipient -->
+        <div class="form-row" style="grid-template-columns: 1fr;">
+            <div class="form-group">
+                <label>Recipient Email *</label>
+                <input type="email" id="set-email" value="{{ settings.get('recipient_email', '') }}" placeholder="kim@company.com" required>
+            </div>
+        </div>
+
+        <!-- Frequency -->
+        <div class="form-row">
+            <div class="form-group">
+                <label>Frequency</label>
+                <select id="set-frequency" onchange="updateFrequencyOptions()">
+                    <option value="daily" {% if settings.get('frequency') == 'daily' %}selected{% endif %}>Daily</option>
+                    <option value="weekly" {% if settings.get('frequency') == 'weekly' %}selected{% endif %}>Weekly</option>
+                    <option value="biweekly" {% if settings.get('frequency') == 'biweekly' %}selected{% endif %}>Bi-weekly</option>
+                    <option value="monthly" {% if settings.get('frequency') == 'monthly' %}selected{% endif %}>Monthly</option>
+                </select>
+            </div>
+            <div class="form-group" id="day-group">
+                <label>Day of Week</label>
+                <select id="set-day">
+                    <option value="1" {% if settings.get('day_of_week') == '1' %}selected{% endif %}>Monday</option>
+                    <option value="2" {% if settings.get('day_of_week') == '2' %}selected{% endif %}>Tuesday</option>
+                    <option value="3" {% if settings.get('day_of_week') == '3' %}selected{% endif %}>Wednesday</option>
+                    <option value="4" {% if settings.get('day_of_week') == '4' %}selected{% endif %}>Thursday</option>
+                    <option value="5" {% if settings.get('day_of_week') == '5' %}selected{% endif %}>Friday</option>
+                    <option value="6" {% if settings.get('day_of_week') == '6' %}selected{% endif %}>Saturday</option>
+                    <option value="0" {% if settings.get('day_of_week') == '0' %}selected{% endif %}>Sunday</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Time -->
+        <div class="form-row">
+            <div class="form-group">
+                <label>Time of Day</label>
+                <input type="time" id="set-time" value="{{ settings.get('time_of_day', '08:00') }}">
+            </div>
+            <div class="form-group">
+                <label>Include</label>
+                <select id="set-scope" onchange="toggleFilter()">
+                    <option value="all" {% if settings.get('include_scope') == 'all' %}selected{% endif %}>Everyone</option>
+                    <option value="employee" {% if settings.get('include_scope') == 'employee' %}selected{% endif %}>Specific Employee</option>
+                    <option value="project" {% if settings.get('include_scope') == 'project' %}selected{% endif %}>Specific Project</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Filter (shown when scope is not "all") -->
+        <div class="form-row" id="filter-row" style="display:none; grid-template-columns: 1fr;">
+            <div class="form-group">
+                <label id="filter-label">Filter</label>
+                <select id="set-filter">
+                    <option value="">Select...</option>
+                    {% for e in employees %}
+                    <option value="employee:{{ e.id }}" class="opt-employee" {% if settings.get('include_filter') == 'employee:' ~ e.id|string %}selected{% endif %}>{{ e.first_name }}</option>
+                    {% endfor %}
+                    {% for p in projects %}
+                    <option value="project:{{ p.id }}" class="opt-project" {% if settings.get('include_filter') == 'project:' ~ p.id|string %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- Save + Send Now -->
+        <div style="display:flex; gap:8px; margin-top:16px;">
+            <button type="submit" class="btn btn--primary">Save Settings</button>
+            <button type="button" class="btn btn--secondary" onclick="sendNow()">Send Report Now</button>
+        </div>
+        <div id="settings-msg" style="margin-top:10px;"></div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateFrequencyOptions() {
+    var freq = document.getElementById('set-frequency').value;
+    var dayGroup = document.getElementById('day-group');
+    dayGroup.style.display = (freq === 'daily') ? 'none' : '';
+}
+
+function toggleFilter() {
+    var scope = document.getElementById('set-scope').value;
+    var filterRow = document.getElementById('filter-row');
+    var filterLabel = document.getElementById('filter-label');
+    filterRow.style.display = (scope === 'all') ? 'none' : '';
+
+    // Show/hide relevant options
+    var empOpts = document.querySelectorAll('.opt-employee');
+    var projOpts = document.querySelectorAll('.opt-project');
+    empOpts.forEach(function(o) { o.style.display = (scope === 'employee') ? '' : 'none'; });
+    projOpts.forEach(function(o) { o.style.display = (scope === 'project') ? '' : 'none'; });
+    filterLabel.textContent = scope === 'employee' ? 'Employee' : 'Project';
+}
+
+function saveSettings(e) {
+    e.preventDefault();
+    var data = {
+        enabled: document.getElementById('set-enabled').value,
+        recipient_email: document.getElementById('set-email').value,
+        frequency: document.getElementById('set-frequency').value,
+        day_of_week: document.getElementById('set-day').value,
+        time_of_day: document.getElementById('set-time').value,
+        include_scope: document.getElementById('set-scope').value,
+        include_filter: document.getElementById('set-filter').value || '',
+    };
+    fetch('/api/settings', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(d) {
+        var msg = document.getElementById('settings-msg');
+        if (d.status === 'updated') {
+            msg.innerHTML = '<span style="color:#16a34a;">Settings saved.</span>';
+        } else {
+            msg.innerHTML = '<span style="color:#dc2626;">' + (d.error || 'Failed to save') + '</span>';
+        }
+    });
+}
+
+function sendNow() {
+    var msg = document.getElementById('settings-msg');
+    msg.innerHTML = '<span style="color:#6b7280;">Sending report...</span>';
+    fetch('/api/settings/send-now', { method: 'POST' })
+    .then(function(resp) { return resp.json(); })
+    .then(function(d) {
+        if (d.status === 'sent') {
+            msg.innerHTML = '<span style="color:#16a34a;">Report sent to ' + d.recipient + '</span>';
+        } else {
+            msg.innerHTML = '<span style="color:#dc2626;">' + (d.error || 'Failed to send') + '</span>';
+        }
+    });
+}
+
+// Init visibility
+updateFrequencyOptions();
+toggleFilter();
+</script>
+{% endblock %}

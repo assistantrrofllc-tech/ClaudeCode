@@ -12,11 +12,13 @@ PRAGMA foreign_keys=ON;
 -- ============================================================
 CREATE TABLE IF NOT EXISTS employees (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_uuid   TEXT    UNIQUE DEFAULT (lower(hex(randomblob(16)))),
     phone_number    TEXT    UNIQUE NOT NULL,
     first_name      TEXT    NOT NULL,
     full_name       TEXT,
     role            TEXT,
     crew            TEXT,
+    photo           TEXT,
     is_active       INTEGER DEFAULT 1,
     created_at      TEXT    DEFAULT (datetime('now')),
     updated_at      TEXT    DEFAULT (datetime('now'))
@@ -150,3 +152,40 @@ CREATE TABLE IF NOT EXISTS conversation_state (
 
 CREATE INDEX IF NOT EXISTS idx_convo_employee ON conversation_state(employee_id);
 CREATE INDEX IF NOT EXISTS idx_convo_state    ON conversation_state(state);
+
+-- ============================================================
+-- UNKNOWN CONTACTS
+-- Logs SMS attempts from unregistered phone numbers.
+-- Displayed in dashboard review queue for management.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS unknown_contacts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone_number    TEXT    NOT NULL,
+    message_body    TEXT,
+    has_media       INTEGER DEFAULT 0,
+    created_at      TEXT    DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_unknown_phone ON unknown_contacts(phone_number);
+CREATE INDEX IF NOT EXISTS idx_unknown_created ON unknown_contacts(created_at);
+
+-- ============================================================
+-- EMAIL SETTINGS
+-- Kim controls her own report schedule and destination.
+-- Key-value store for simplicity — one row per setting.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS email_settings (
+    key             TEXT    PRIMARY KEY,
+    value           TEXT    NOT NULL,
+    updated_at      TEXT    DEFAULT (datetime('now'))
+);
+
+-- Seed defaults
+INSERT OR IGNORE INTO email_settings (key, value) VALUES
+    ('recipient_email', ''),
+    ('frequency', 'weekly'),
+    ('day_of_week', '1'),
+    ('time_of_day', '08:00'),
+    ('include_scope', 'all'),
+    ('include_filter', ''),
+    ('enabled', '1');

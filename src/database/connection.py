@@ -9,12 +9,12 @@ import os
 import sqlite3
 from pathlib import Path
 
-DATABASE_PATH = os.getenv("DATABASE_PATH", "data/crewledger.db")
+_DEFAULT_DB = "data/crewledger.db"
 
 
 def get_db(db_path: str | None = None) -> sqlite3.Connection:
     """Return a SQLite connection with standard config applied."""
-    path = db_path or DATABASE_PATH
+    path = db_path or os.getenv("DATABASE_PATH", _DEFAULT_DB)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(path)
