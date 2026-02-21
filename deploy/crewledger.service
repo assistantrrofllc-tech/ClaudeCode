@@ -1,0 +1,38 @@
+# CrewLedger — systemd service file
+#
+# Install: sudo cp deploy/crewledger.service /etc/systemd/system/
+#          sudo systemctl daemon-reload
+#          sudo systemctl enable crewledger
+#          sudo systemctl start crewledger
+
+[Unit]
+Description=CrewLedger — Field Operations Platform
+Documentation=https://github.com/assistantrrofllc-tech/ClaudeCode
+After=network.target
+
+[Service]
+Type=notify
+User=crewledger
+Group=crewledger
+RuntimeDirectory=crewledger
+WorkingDirectory=/opt/crewledger
+EnvironmentFile=/opt/crewledger/.env
+ExecStart=/opt/crewledger/venv/bin/gunicorn -c deploy/gunicorn.conf.py 'src.app:create_app()'
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/crewledger/data /opt/crewledger/storage /var/log/crewledger
+PrivateTmp=yes
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

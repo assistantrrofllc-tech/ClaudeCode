@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% set active_page = "ledger" %}
+{% block title %}CrewLedger — Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Ledger</h1>
+    <div class="header-actions">
+        <button class="btn btn--secondary" onclick="printLedger()">Print</button>
+        <div class="dropdown">
+            <button class="btn btn--primary" onclick="toggleDropdown('export-menu')">Export</button>
+            <div id="export-menu" class="dropdown-menu" style="display:none;">
+                <a href="#" onclick="exportData('quickbooks'); return false;">QuickBooks CSV</a>
+                <a href="#" onclick="exportData('csv'); return false;">Google Sheets CSV</a>
+                <a href="#" onclick="exportData('excel'); return false;">Excel (.xlsx)</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Time Filter Buttons -->
+<div class="filter-bar">
+    <div class="time-filters">
+        <button class="filter-btn active" data-period="all" onclick="setPeriod('all', this)">All</button>
+        <button class="filter-btn" data-period="today" onclick="setPeriod('today', this)">Today</button>
+        <button class="filter-btn" data-period="week" onclick="setPeriod('week', this)">This Week</button>
+        <button class="filter-btn" data-period="month" onclick="setPeriod('month', this)">This Month</button>
+        <button class="filter-btn" data-period="ytd" onclick="setPeriod('ytd', this)">YTD</button>
+        <button class="filter-btn" data-period="custom" onclick="showCustomRange()">Custom</button>
+    </div>
+    <div id="custom-range" class="custom-range" style="display:none;">
+        <input type="date" id="date-start">
+        <span>to</span>
+        <input type="date" id="date-end">
+        <button class="btn btn--small btn--primary" onclick="applyCustomRange()">Apply</button>
+    </div>
+</div>
+
+<!-- Sort & Filter Row -->
+<div class="sort-row">
+    <select id="sort-select" onchange="loadLedger()">
+        <option value="date">Sort by Date</option>
+        <option value="employee">Sort by Employee</option>
+        <option value="vendor">Sort by Vendor</option>
+        <option value="project">Sort by Project</option>
+        <option value="amount">Sort by Amount</option>
+        <option value="status">Sort by Status</option>
+    </select>
+    <select id="order-select" onchange="loadLedger()">
+        <option value="desc">Newest First</option>
+        <option value="asc">Oldest First</option>
+    </select>
+    <select id="status-filter" onchange="loadLedger()">
+        <option value="">All Statuses</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="pending">Pending</option>
+        <option value="flagged">Flagged</option>
+    </select>
+    <select id="employee-filter" onchange="loadLedger()">
+        <option value="">All Employees</option>
+        {% for e in employees %}
+        <option value="{{ e.id }}">{{ e.first_name }}</option>
+        {% endfor %}
+    </select>
+    <select id="project-filter" onchange="loadLedger()">
+        <option value="">All Projects</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}">{{ p.name }}</option>
+        {% endfor %}
+    </select>
+</div>
+
+<!-- Totals Bar -->
+<div class="totals-bar" id="totals-bar">
+    <span id="total-count">0 transactions</span>
+    <span id="total-amount">$0.00</span>
+</div>
+
+<!-- Transaction Table -->
+<div class="card ledger-card">
+    <table class="data-table ledger-table" id="ledger-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Employee</th>
+                <th>Vendor</th>
+                <th>Project</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="ledger-body">
+            <tr><td colspan="7" class="loading">Loading...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Print-only view -->
+<div id="print-view" class="print-only">
+    <div class="print-header">
+        <h1>CrewLedger Transaction Report</h1>
+        <p>Roofing & Renovations of Florida LLC</p>
+        <p id="print-date-range"></p>
+        <p id="print-generated"></p>
+    </div>
+    <table class="print-table" id="print-table">
+        <thead>
+            <tr><th>Date</th><th>Employee</th><th>Vendor</th><th>Project</th><th>Category</th><th>Amount</th><th>Status</th></tr>
+        </thead>
+        <tbody id="print-body"></tbody>
+        <tfoot id="print-foot"></tfoot>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var currentPeriod = 'all';
+var currentData = [];
+
+function setPeriod(period, btn) {
+    currentPeriod = period;
+    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+    if (period !== 'custom') {
+        document.getElementById('custom-range').style.display = 'none';
+    }
+    loadLedger();
+}
+
+function showCustomRange() {
+    document.getElementById('custom-range').style.display = 'flex';
+    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelector('[data-period="custom"]').classList.add('active');
+}
+
+function applyCustomRange() {
+    currentPeriod = 'custom';
+    loadLedger();
+}
+
+function loadLedger() {
+    var params = new URLSearchParams();
+    if (currentPeriod === 'custom') {
+        var s = document.getElementById('date-start').value;
+        var e = document.getElementById('date-end').value;
+        if (s) params.set('start', s);
+        if (e) params.set('end', e);
+    } else if (currentPeriod !== 'all') {
+        params.set('period', currentPeriod);
+    }
+
+    var sort = document.getElementById('sort-select').value;
+    var order = document.getElementById('order-select').value;
+    var status = document.getElementById('status-filter').value;
+    var emp = document.getElementById('employee-filter').value;
+    var proj = document.getElementById('project-filter').value;
+
+    params.set('sort', sort);
+    params.set('order', order);
+    if (status) params.set('status', status);
+    if (emp) params.set('employee', emp);
+    if (proj) params.set('project', proj);
+
+    fetch('/api/receipts?' + params.toString())
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            currentData = data;
+            renderLedger(data);
+            updateTotals(data);
+        });
+}
+
+function renderLedger(data) {
+    var body = document.getElementById('ledger-body');
+    if (data.length === 0) {
+        body.innerHTML = '<tr><td colspan="7" class="loading">No transactions found</td></tr>';
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < data.length; i++) {
+        var r = data[i];
+        html += '<tr onclick="openReceiptModal(' + r.id + ')">';
+        html += '<td>' + formatDate(r.purchase_date || r.created_at) + '</td>';
+        html += '<td>' + escapeHtml(r.employee_name || '?') + '</td>';
+        html += '<td>' + escapeHtml(r.vendor_name || 'Unknown') + '</td>';
+        html += '<td>' + escapeHtml(r.project_name || r.matched_project_name || '—') + '</td>';
+        html += '<td class="cell-amount">' + formatMoney(r.total) + '</td>';
+        html += '<td><span class="badge badge--' + (r.status || '') + '">' + (r.status || '') + '</span></td>';
+        html += '<td>';
+        if (r.image_url) {
+            html += '<button class="img-btn" onclick="event.stopPropagation(); openReceiptModal(' + r.id + ')" title="View receipt">';
+            html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>';
+            html += '</button>';
+        }
+        html += '</td>';
+        html += '</tr>';
+    }
+    body.innerHTML = html;
+}
+
+function updateTotals(data) {
+    var total = 0;
+    for (var i = 0; i < data.length; i++) {
+        total += (data[i].total || 0);
+    }
+    document.getElementById('total-count').textContent = data.length + ' transaction' + (data.length !== 1 ? 's' : '');
+    document.getElementById('total-amount').textContent = formatMoney(total);
+}
+
+function getFilterParams() {
+    var params = new URLSearchParams();
+    if (currentPeriod === 'custom') {
+        var s = document.getElementById('date-start').value;
+        var e = document.getElementById('date-end').value;
+        if (s) params.set('start', s);
+        if (e) params.set('end', e);
+    } else if (currentPeriod !== 'all') {
+        params.set('period', currentPeriod);
+    }
+    var status = document.getElementById('status-filter').value;
+    var emp = document.getElementById('employee-filter').value;
+    var proj = document.getElementById('project-filter').value;
+    if (status) params.set('status', status);
+    if (emp) params.set('employee', emp);
+    if (proj) params.set('project', proj);
+    params.set('sort', document.getElementById('sort-select').value);
+    params.set('order', document.getElementById('order-select').value);
+    return params;
+}
+
+// ── Export ──────────────────────────────
+
+function exportData(format) {
+    var params = getFilterParams();
+    params.set('format', format);
+    window.location.href = '/api/receipts/export?' + params.toString();
+    toggleDropdown('export-menu');
+}
+
+function toggleDropdown(id) {
+    var el = document.getElementById(id);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.dropdown')) {
+        document.querySelectorAll('.dropdown-menu').forEach(function(m) { m.style.display = 'none'; });
+    }
+});
+
+// ── Print ──────────────────────────────
+
+function printLedger() {
+    var printBody = document.getElementById('print-body');
+    var html = '';
+    var total = 0;
+    for (var i = 0; i < currentData.length; i++) {
+        var r = currentData[i];
+        total += (r.total || 0);
+        html += '<tr>';
+        html += '<td>' + (r.purchase_date || '—') + '</td>';
+        html += '<td>' + escapeHtml(r.employee_name || '') + '</td>';
+        html += '<td>' + escapeHtml(r.vendor_name || '') + '</td>';
+        html += '<td>' + escapeHtml(r.project_name || r.matched_project_name || '') + '</td>';
+        html += '<td>' + escapeHtml(r.crew || '') + '</td>';
+        html += '<td style="text-align:right">' + formatMoney(r.total) + '</td>';
+        html += '<td>' + (r.status || '') + '</td>';
+        html += '</tr>';
+    }
+    printBody.innerHTML = html;
+    document.getElementById('print-foot').innerHTML =
+        '<tr><td colspan="5" style="text-align:right;font-weight:bold">Total:</td>' +
+        '<td style="text-align:right;font-weight:bold">' + formatMoney(total) + '</td><td></td></tr>';
+
+    document.getElementById('print-date-range').textContent = 'Period: ' + currentPeriod;
+    document.getElementById('print-generated').textContent = 'Generated: ' + new Date().toLocaleDateString();
+    window.print();
+}
+
+// Load on page ready
+loadLedger();
+</script>
+{% endblock %}

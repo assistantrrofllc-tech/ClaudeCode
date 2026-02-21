@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% set active_page = "employees" %}
+{% block title %}CrewLedger — Employees{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Employees</h1>
+    <button class="btn btn--primary" onclick="showAddForm()">+ Add Employee</button>
+</div>
+
+<!-- Add Employee Form (hidden by default) -->
+<div id="add-form" class="card" style="display:none; margin-bottom:20px;">
+    <h3>Add New Employee</h3>
+    <form onsubmit="addEmployee(event)">
+        <div class="form-row">
+            <div class="form-group">
+                <label>First Name *</label>
+                <input type="text" id="emp-first-name" required placeholder="Omar">
+            </div>
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="emp-full-name" placeholder="Omar Rodriguez">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Phone Number *</label>
+                <input type="tel" id="emp-phone" required placeholder="+14075551234">
+            </div>
+            <div class="form-group">
+                <label>Crew</label>
+                <input type="text" id="emp-crew" placeholder="Mario's Crew">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Role</label>
+                <input type="text" id="emp-role" placeholder="Driver">
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end;">
+                <button type="submit" class="btn btn--primary">Save Employee</button>
+                <button type="button" class="btn btn--secondary" onclick="hideAddForm()" style="margin-left:8px;">Cancel</button>
+            </div>
+        </div>
+        <div id="add-error" class="error-msg" style="display:none;"></div>
+    </form>
+</div>
+
+<!-- Search -->
+<div class="search-bar">
+    <input type="text" id="emp-search" placeholder="Search by name or crew..." oninput="filterEmployees()">
+</div>
+
+<!-- Employee List -->
+<div class="card">
+    <table class="data-table" id="emp-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Crew</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last Submission</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in employees %}
+            <tr data-name="{{ e.first_name }} {{ e.full_name or '' }}" data-crew="{{ e.crew or '' }}">
+                <td class="cell-name">
+                    <strong>{{ e.first_name }}</strong>
+                    {% if e.full_name %}<br><span class="text-muted">{{ e.full_name }}</span>{% endif %}
+                </td>
+                <td class="cell-phone">{{ e.phone_number }}</td>
+                <td>{{ e.crew or '—' }}</td>
+                <td>{{ e.role or '—' }}</td>
+                <td>
+                    {% if e.is_active %}
+                    <span class="badge badge--confirmed">Active</span>
+                    {% else %}
+                    <span class="badge badge--rejected">Inactive</span>
+                    {% endif %}
+                </td>
+                <td class="text-muted">{{ e.last_submission or 'Never' }}</td>
+                <td class="cell-actions">
+                    {% if e.is_active %}
+                    <button class="btn btn--small btn--danger" onclick="toggleEmployee({{ e.id }}, 'deactivate')">Deactivate</button>
+                    {% else %}
+                    <button class="btn btn--small btn--success" onclick="toggleEmployee({{ e.id }}, 'activate')">Reactivate</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showAddForm() {
+    document.getElementById('add-form').style.display = 'block';
+    document.getElementById('emp-first-name').focus();
+}
+function hideAddForm() {
+    document.getElementById('add-form').style.display = 'none';
+    document.getElementById('add-error').style.display = 'none';
+}
+
+function addEmployee(e) {
+    e.preventDefault();
+    var data = {
+        first_name: document.getElementById('emp-first-name').value,
+        full_name: document.getElementById('emp-full-name').value || undefined,
+        phone_number: document.getElementById('emp-phone').value,
+        crew: document.getElementById('emp-crew').value || undefined,
+        role: document.getElementById('emp-role').value || undefined,
+    };
+    fetch('/api/employees', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    })
+    .then(function(resp) { return resp.json().then(function(d) { return {status: resp.status, data: d}; }); })
+    .then(function(r) {
+        if (r.status === 201) {
+            location.reload();
+        } else {
+            var errEl = document.getElementById('add-error');
+            errEl.textContent = r.data.error || 'Failed to add employee';
+            errEl.style.display = 'block';
+        }
+    });
+}
+
+function toggleEmployee(id, action) {
+    fetch('/api/employees/' + id + '/' + action, { method: 'POST' })
+    .then(function() { location.reload(); });
+}
+
+function filterEmployees() {
+    var query = document.getElementById('emp-search').value.toLowerCase();
+    var rows = document.querySelectorAll('#emp-table tbody tr');
+    rows.forEach(function(row) {
+        var name = (row.getAttribute('data-name') || '').toLowerCase();
+        var crew = (row.getAttribute('data-crew') || '').toLowerCase();
+        row.style.display = (name.indexOf(query) >= 0 || crew.indexOf(query) >= 0) ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

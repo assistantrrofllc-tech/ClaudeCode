@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CrewLedger{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-brand">
+            <a href="/">CrewLedger</a>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="nav-link {% if active_page == 'home' %}active{% endif %}">Dashboard</a>
+            <a href="/ledger" class="nav-link {% if active_page == 'ledger' %}active{% endif %}">Ledger</a>
+            <a href="/employees" class="nav-link {% if active_page == 'employees' %}active{% endif %}">Employees</a>
+            <a href="/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}">Settings</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Receipt Image Modal -->
+    <div id="receipt-modal" class="modal" style="display:none;">
+        <div class="modal-backdrop" onclick="closeReceiptModal()"></div>
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeReceiptModal()">&times;</button>
+            <div class="modal-body">
+                <div class="modal-image-wrap">
+                    <img id="modal-receipt-image" src="" alt="Receipt image">
+                </div>
+                <div class="modal-details" id="modal-receipt-details">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

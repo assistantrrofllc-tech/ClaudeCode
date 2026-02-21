@@ -23,8 +23,11 @@ from src.services.ocr import extract_receipt_data, format_confirmation_message
 log = logging.getLogger(__name__)
 
 
-def handle_incoming_message(parsed: dict) -> str:
-    """Route an incoming SMS/MMS and return the reply text."""
+def handle_incoming_message(parsed: dict) -> str | None:
+    """Route an incoming SMS/MMS and return the reply text.
+
+    Returns None for unknown numbers — no response sent (whitelist security).
+    """
     phone = parsed["from_number"]
     body = parsed["body"]
     media = parsed["media"]
@@ -33,9 +36,15 @@ def handle_incoming_message(parsed: dict) -> str:
     try:
         employee = _lookup_employee(db, phone)
 
-        # --- New employee: auto-register ---
+        # --- Unknown number: silence + flag ---
         if employee is None:
-            return _handle_new_employee(db, phone, body, media)
+            _log_unknown_contact(db, phone, body, bool(media))
+            return None
+
+        # --- Inactive employee: silence ---
+        if not employee["is_active"]:
+            log.info("Inactive employee %s (%s) attempted contact", employee["first_name"], phone)
+            return None
 
         first_name = employee["first_name"]
         employee_id = employee["id"]
@@ -83,6 +92,20 @@ def _lookup_employee(db, phone: str):
     return db.execute(
         "SELECT * FROM employees WHERE phone_number = ?", (phone,)
     ).fetchone()
+
+
+def _log_unknown_contact(db, phone: str, body: str, has_media: bool):
+    """Log an SMS attempt from an unregistered phone number.
+
+    No response is sent — complete silence. The attempt is flagged
+    in the dashboard review queue for management to see.
+    """
+    db.execute(
+        "INSERT INTO unknown_contacts (phone_number, message_body, has_media) VALUES (?, ?, ?)",
+        (phone, body[:500] if body else None, int(has_media)),
+    )
+    db.commit()
+    log.warning("Unknown number %s attempted contact — silenced and flagged", phone)
 
 
 def _handle_new_employee(db, phone: str, body: str, media: list) -> str:
