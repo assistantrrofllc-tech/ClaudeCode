@@ -813,6 +813,20 @@ def api_edit_receipt(receipt_id):
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [receipt_id]
         db.execute(f"UPDATE receipts SET {set_clause} WHERE id = ?", values)
+
+        # Clear conversation state if status changed via dashboard
+        if "status" in updates and updates["status"] in ("confirmed", "deleted"):
+            employee_id = receipt["employee_id"]
+            convo = db.execute(
+                "SELECT id FROM conversation_state WHERE employee_id = ? AND receipt_id = ?",
+                (employee_id, receipt_id),
+            ).fetchone()
+            if convo:
+                db.execute(
+                    "UPDATE conversation_state SET state = 'idle', updated_at = datetime('now') WHERE id = ?",
+                    (convo["id"],),
+                )
+
         db.commit()
 
         log.info("Receipt #%d edited via dashboard (%s)", receipt_id, ", ".join(updates.keys()))
@@ -854,6 +868,17 @@ def api_delete_receipt(receipt_id):
             "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, 'status', ?, 'deleted', 'management')",
             (receipt_id, old_status),
         )
+        # Clear conversation state so employee can submit new receipts
+        employee_id = receipt["employee_id"]
+        convo = db.execute(
+            "SELECT id FROM conversation_state WHERE employee_id = ? AND receipt_id = ?",
+            (employee_id, receipt_id),
+        ).fetchone()
+        if convo:
+            db.execute(
+                "UPDATE conversation_state SET state = 'idle', updated_at = datetime('now') WHERE id = ?",
+                (convo["id"],),
+            )
         db.commit()
         log.info("Receipt #%d soft-deleted (was %s)", receipt_id, old_status)
         return jsonify({"status": "deleted", "id": receipt_id})
