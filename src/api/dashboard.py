@@ -1293,25 +1293,26 @@ def _query_receipts(db, args) -> list:
     conditions = []
     params = []
 
-    # Period filter
+    # Period filter — use purchase_date (actual receipt date), fall back to created_at
+    date_col = "COALESCE(r.purchase_date, date(r.created_at))"
     period = args.get("period", "all")
     if period == "today":
-        conditions.append("r.created_at >= date('now')")
+        conditions.append(f"{date_col} >= date('now')")
     elif period == "week":
-        conditions.append("r.created_at >= date('now', 'weekday 1', '-7 days')")
+        conditions.append(f"{date_col} >= date('now', 'weekday 1', '-7 days')")
     elif period == "month":
-        conditions.append("r.created_at >= date('now', 'start of month')")
+        conditions.append(f"{date_col} >= date('now', 'start of month')")
     elif period == "ytd":
-        conditions.append("r.created_at >= date('now', 'start of year')")
+        conditions.append(f"{date_col} >= date('now', 'start of year')")
 
     # Custom date range
     start = args.get("start")
     end = args.get("end")
     if start:
-        conditions.append("r.created_at >= ?")
+        conditions.append(f"{date_col} >= ?")
         params.append(start)
     if end:
-        conditions.append("r.created_at < date(?, '+1 day')")
+        conditions.append(f"{date_col} <= ?")
         params.append(end)
 
     # Filters
@@ -1344,15 +1345,14 @@ def _query_receipts(db, args) -> list:
 
     # Sorting
     sort_map = {
-        "date": "r.created_at",
+        "date": "COALESCE(r.purchase_date, date(r.created_at))",
         "employee": "e.first_name",
         "vendor": "r.vendor_name",
         "project": "p.name",
         "amount": "r.total",
         "status": "r.status",
-        "category": "r.vendor_name",
     }
-    sort_col = sort_map.get(args.get("sort", "date"), "r.created_at")
+    sort_col = sort_map.get(args.get("sort", "date"), "COALESCE(r.purchase_date, date(r.created_at))")
     order = "ASC" if args.get("order") == "asc" else "DESC"
 
     rows = db.execute(f"""
