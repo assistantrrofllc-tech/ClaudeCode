@@ -249,7 +249,8 @@ button { cursor: pointer; font-family: inherit; }
     display: flex;
     flex-direction: column;
     overflow: auto;
-    max-height: 90vh;
+    flex: 1;
+    min-height: 0;
 }
 .modal-image-wrap {
     background: #f8f8f8;
@@ -483,8 +484,42 @@ button { cursor: pointer; font-family: inherit; }
     transition: background 0.12s, color 0.12s;
 }
 .row-action-btn:hover { background: #f3f4f6; }
+.row-action-btn svg { pointer-events: none; }
 .row-action-btn--edit:hover { color: #2563eb; }
 .row-action-btn--delete:hover { color: #dc2626; }
+
+/* ── Status Popover (Ledger) ──────────────────────────── */
+.badge-action { cursor: pointer; }
+.badge-action:hover { opacity: 0.8; }
+.status-popover {
+    position: fixed;
+    z-index: 200;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    min-width: 140px;
+    overflow: hidden;
+}
+.status-popover button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    font-family: inherit;
+    color: #374151;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s;
+}
+.status-popover button:hover { background: #f3f4f6; }
+.status-popover button.sp-confirm { color: #16a34a; }
+.status-popover button.sp-flag { color: #dc2626; }
+.status-popover button.sp-delete { color: #dc2626; border-top: 1px solid #f0f0f0; }
 
 /* ── Filter Bar (Ledger) ─────────────────────────────── */
 .filter-bar {

@@ -101,6 +101,13 @@
     </table>
 </div>
 
+<!-- Status Popover -->
+<div id="status-popover" class="status-popover" style="display:none;">
+    <button class="sp-confirm" onclick="changeReceiptStatus('confirmed')">Confirm</button>
+    <button class="sp-flag" onclick="changeReceiptStatus('flagged')">Flag</button>
+    <button class="sp-delete" onclick="statusPopoverDelete()">Delete</button>
+</div>
+
 <!-- Print-only view -->
 <div id="print-view" class="print-only">
     <div class="print-header">
@@ -195,7 +202,7 @@ function renderLedger(data) {
         html += '<td>' + escapeHtml(r.vendor_name || 'Unknown') + '</td>';
         html += '<td>' + escapeHtml(r.project_name || r.matched_project_name || '—') + '</td>';
         html += '<td class="cell-amount">' + formatMoney(r.total) + '</td>';
-        html += '<td><span class="badge badge--' + (r.status || '') + '">' + (r.status || '') + '</span></td>';
+        html += '<td><span class="badge badge--' + (r.status || '') + ' badge-action" onclick="event.stopPropagation(); openStatusPopover(' + r.id + ', this)">' + (r.status || '') + '</span></td>';
         html += '<td class="cell-notes">' + escapeHtml(r.notes || '') + '</td>';
         html += '<td class="cell-actions">';
         html += '<button class="row-action-btn row-action-btn--edit" onclick="event.stopPropagation(); quickEditReceipt(' + r.id + ')" title="Quick edit">';
@@ -289,6 +296,57 @@ function printLedger() {
     document.getElementById('print-generated').textContent = 'Generated: ' + new Date().toLocaleDateString();
     window.print();
 }
+
+// ── Status Popover ────────────────────────
+
+var _statusPopoverReceiptId = null;
+
+function openStatusPopover(receiptId, badgeEl) {
+    _statusPopoverReceiptId = receiptId;
+    var popover = document.getElementById('status-popover');
+    var rect = badgeEl.getBoundingClientRect();
+    popover.style.top = (rect.bottom + 4) + 'px';
+    popover.style.left = rect.left + 'px';
+    popover.style.display = 'block';
+}
+
+function closeStatusPopover() {
+    document.getElementById('status-popover').style.display = 'none';
+    _statusPopoverReceiptId = null;
+}
+
+function changeReceiptStatus(newStatus) {
+    var receiptId = _statusPopoverReceiptId;
+    if (!receiptId) return;
+    closeStatusPopover();
+
+    fetch('/api/receipts/' + receiptId + '/edit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: newStatus}),
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(d) {
+        if (d.status === 'updated') {
+            loadLedger();
+        } else {
+            alert(d.error || 'Failed to update status');
+        }
+    });
+}
+
+function statusPopoverDelete() {
+    var receiptId = _statusPopoverReceiptId;
+    closeStatusPopover();
+    if (receiptId) deleteReceipt(receiptId);
+}
+
+// Close popover on outside click
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.status-popover') && !e.target.closest('.badge-action')) {
+        closeStatusPopover();
+    }
+});
 
 // ── Quick Edit (pencil icon) ──────────────
 
