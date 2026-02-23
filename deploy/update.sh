@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 #
 # CrewLedger — Quick Update Script
-# Pull latest code and restart the app (run on VPS)
+# Pull latest code and restart the app (run on VPS as root)
 #
-# Usage: sudo bash /opt/crewledger/deploy/update.sh
+# Usage: bash /opt/crewledger/deploy/update.sh
 #
 set -euo pipefail
 
 APP_DIR="/opt/crewledger"
 BRANCH="main"
 
+echo "Fixing permissions..."
+chown -R crewledger:crewledger "${APP_DIR}/"
+
 echo "Pulling latest code..."
 cd "${APP_DIR}"
-sudo -u crewledger git fetch origin ${BRANCH}
-sudo -u crewledger git reset --hard origin/${BRANCH}
+su -s /bin/bash crewledger -c "git fetch origin ${BRANCH} && git reset --hard origin/${BRANCH}"
 
 echo "Updating Python packages..."
 source "${APP_DIR}/venv/bin/activate"
@@ -23,10 +25,11 @@ echo "Restarting CrewLedger..."
 systemctl restart crewledger
 
 echo "Checking health..."
-sleep 2
-if curl -s http://127.0.0.1:5000/health | grep -q '"ok"'; then
+sleep 3
+if curl -sf http://127.0.0.1:5000/health | grep -q '"ok"'; then
     echo "CrewLedger updated and running!"
 else
     echo "WARNING: Health check failed. Check logs:"
-    echo "  journalctl -u crewledger -n 20"
+    journalctl -u crewledger -n 20 --no-pager
+    exit 1
 fi
