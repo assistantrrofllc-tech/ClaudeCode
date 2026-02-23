@@ -88,6 +88,9 @@ function openReceiptModal(receiptId) {
                 if (isHidden) {
                     btns += ' <button class="btn btn--small btn--success" onclick="restoreReceipt(' + receiptId + ')">Restore</button>';
                 } else {
+                    if (data.status === 'pending' || data.status === 'flagged') {
+                        btns += ' <button class="btn btn--small btn--success" onclick="confirmReceipt(' + receiptId + ')">Confirm</button>';
+                    }
                     btns += ' <button class="btn btn--small btn--secondary" onclick="markDuplicate(' + receiptId + ')">Mark Duplicate</button>';
                     btns += ' <button class="btn btn--small btn--danger" onclick="deleteReceipt(' + receiptId + ')">Delete</button>';
                 }
@@ -243,7 +246,25 @@ function showEditHistory(receiptId) {
 }
 
 
-// ── Delete / Restore / Duplicate ────────────────────────
+// ── Confirm / Delete / Restore / Duplicate ──────────────
+
+function confirmReceipt(receiptId) {
+    fetch('/api/receipts/' + receiptId + '/edit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: 'confirmed'}),
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(d) {
+        if (d.status === 'updated') {
+            openReceiptModal(receiptId);
+            if (typeof loadLedger === 'function') loadLedger();
+            else location.reload();
+        } else {
+            alert(d.error || 'Failed to confirm receipt');
+        }
+    });
+}
 
 function deleteReceipt(receiptId) {
     if (!confirm('Are you sure you want to delete this receipt? It can be restored from the Ledger.')) return;
