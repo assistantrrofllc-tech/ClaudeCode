@@ -89,6 +89,7 @@
                 <th>Employee</th>
                 <th>Vendor</th>
                 <th>Project</th>
+                <th>Category</th>
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Notes</th>
@@ -96,7 +97,7 @@
             </tr>
         </thead>
         <tbody id="ledger-body">
-            <tr><td colspan="8" class="loading">Loading...</td></tr>
+            <tr><td colspan="9" class="loading">Loading...</td></tr>
         </tbody>
     </table>
 </div>
@@ -118,7 +119,7 @@
     </div>
     <table class="print-table" id="print-table">
         <thead>
-            <tr><th>Date</th><th>Employee</th><th>Vendor</th><th>Project</th><th>Amount</th><th>Status</th><th>Notes</th></tr>
+            <tr><th>Date</th><th>Employee</th><th>Vendor</th><th>Project</th><th>Category</th><th>Amount</th><th>Status</th><th>Notes</th></tr>
         </thead>
         <tbody id="print-body"></tbody>
         <tfoot id="print-foot"></tfoot>
@@ -190,7 +191,7 @@ function loadLedger() {
 function renderLedger(data) {
     var body = document.getElementById('ledger-body');
     if (data.length === 0) {
-        body.innerHTML = '<tr><td colspan="8" class="loading">No transactions found</td></tr>';
+        body.innerHTML = '<tr><td colspan="9" class="loading">No transactions found</td></tr>';
         return;
     }
     var html = '';
@@ -201,6 +202,7 @@ function renderLedger(data) {
         html += '<td>' + escapeHtml(r.employee_name || '?') + '</td>';
         html += '<td>' + escapeHtml(r.vendor_name || 'Unknown') + '</td>';
         html += '<td>' + escapeHtml(r.project_name || r.matched_project_name || '—') + '</td>';
+        html += '<td><span class="badge badge--cat">' + escapeHtml(r.category || '—') + '</span></td>';
         html += '<td class="cell-amount">' + formatMoney(r.total) + '</td>';
         html += '<td><span class="badge badge--' + (r.status || '') + ' badge-action" onclick="event.stopPropagation(); openStatusPopover(' + r.id + ', this)">' + (r.status || '') + '</span></td>';
         html += '<td class="cell-notes">' + escapeHtml(r.notes || '') + '</td>';

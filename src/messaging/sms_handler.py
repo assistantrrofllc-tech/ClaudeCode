@@ -244,6 +244,35 @@ def _resolve_project_id(db, project_name: str):
     return None
 
 
+_CATEGORY_KEYWORDS = {
+    1: ["shingle", "underlayment", "flashing", "ridge cap", "drip edge", "osb", "roofing",
+        "tarp", "plywood", "lumber", "deck", "siding", "drywall", "insulation", "cement",
+        "concrete", "mortar", "stucco", "tile", "board"],
+    2: ["tool", "drill", "saw", "ladder", "grinder", "compressor", "nailer", "gun",
+        "sander", "level", "rental", "blade", "bit", "wrench", "hammer", "plier"],
+    3: ["nail", "screw", "bolt", "anchor", "bracket", "fastener", "hinge", "latch",
+        "nut", "washer", "rivet", "staple", "clip"],
+    4: ["hard hat", "helmet", "glove", "harness", "safety", "vest", "glasses", "ppe",
+        "respirator", "ear plug", "first aid", "mask", "goggles"],
+    5: ["fuel", "gas", "diesel", "propane", "unleaded", "petroleum", "oil change"],
+    6: ["office", "permit", "paper", "print", "pen", "marker", "binder", "folder",
+        "stamp", "envelope", "shipping"],
+    7: ["rag", "water", "tape", "caulk", "adhesive", "silicone", "sealant", "glue",
+        "paint", "primer", "brush", "roller", "thinner", "cleaner", "solvent",
+        "gatorade", "drink", "snack", "ice", "food", "cup", "towel", "bag"],
+}
+
+
+def _categorize_item(db, item_name: str):
+    """Match an item name to a category using keyword lookup."""
+    lower = item_name.lower()
+    for cat_id, keywords in _CATEGORY_KEYWORDS.items():
+        for kw in keywords:
+            if kw in lower:
+                return cat_id
+    return 6  # Default to Office & Misc
+
+
 # ── Receipt submission (photo received) ─────────────────────
 
 
@@ -316,17 +345,20 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
     )
     receipt_id = cursor.lastrowid
 
-    # Save line items
+    # Save line items with auto-categorization
     for item in ocr_data.get("line_items", []):
+        item_name = item.get("item_name", "Unknown item")
+        category_id = _categorize_item(db, item_name)
         db.execute(
-            """INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price)
-               VALUES (?, ?, ?, ?, ?)""",
+            """INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
             (
                 receipt_id,
-                item.get("item_name", "Unknown item"),
+                item_name,
                 item.get("quantity", 1),
                 item.get("unit_price"),
                 item.get("extended_price"),
+                category_id,
             ),
         )
 

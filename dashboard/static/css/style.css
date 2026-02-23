@@ -200,6 +200,7 @@ button { cursor: pointer; font-family: inherit; }
 .badge--deleted { background: #fee2e2; color: #dc2626; font-weight: 600; }
 .badge--duplicate { background: #fae8ff; color: #a21caf; font-weight: 600; }
 .badge--red { background: #ef4444; color: #fff; }
+.badge--cat { background: #eff6ff; color: #2563eb; font-weight: 500; }
 
 /* ── Receipt Image Modal ───────────────────────────────── */
 .modal {

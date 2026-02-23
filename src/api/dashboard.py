@@ -1357,7 +1357,12 @@ def _query_receipts(db, args) -> list:
 
     rows = db.execute(f"""
         SELECT r.*, e.first_name as employee_name, e.crew,
-               p.name as project_name
+               p.name as project_name,
+               (SELECT c.name FROM line_items li
+                JOIN categories c ON li.category_id = c.id
+                WHERE li.receipt_id = r.id
+                GROUP BY c.id ORDER BY COUNT(*) DESC LIMIT 1
+               ) as category
         FROM receipts r
         LEFT JOIN employees e ON r.employee_id = e.id
         LEFT JOIN projects p ON r.project_id = p.id
