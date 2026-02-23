@@ -1042,9 +1042,9 @@ def _get_dashboard_stats(db) -> dict:
             COALESCE(SUM(CASE WHEN created_at >= date('now', 'weekday 1', '-7 days') THEN total ELSE 0 END), 0) as week_spend,
             COALESCE(SUM(CASE WHEN created_at >= date('now', 'start of month') THEN total ELSE 0 END), 0) as month_spend,
             COUNT(*) as total_receipts,
-            SUM(CASE WHEN status = 'flagged' THEN 1 ELSE 0 END) as flagged_count,
-            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count,
-            SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) as confirmed_count
+            COALESCE(SUM(CASE WHEN status = 'flagged' THEN 1 ELSE 0 END), 0) as flagged_count,
+            COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending_count,
+            COALESCE(SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END), 0) as confirmed_count
         FROM receipts
     """).fetchone()
 
