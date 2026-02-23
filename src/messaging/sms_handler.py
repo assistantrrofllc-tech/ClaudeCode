@@ -218,6 +218,32 @@ def _clear_conversation_state(db, employee_id: int):
     _set_conversation_state(db, employee_id, "idle")
 
 
+def _resolve_project_id(db, project_name: str):
+    """Resolve a project name to a project_id using exact then fuzzy match."""
+    from thefuzz import fuzz
+
+    # Exact match first
+    row = db.execute(
+        "SELECT id FROM projects WHERE LOWER(name) = LOWER(?) AND status = 'active'",
+        (project_name.strip(),),
+    ).fetchone()
+    if row:
+        return row["id"]
+
+    # Fuzzy match against active projects
+    projects = db.execute("SELECT id, name FROM projects WHERE status = 'active'").fetchall()
+    best_id, best_score = None, 0
+    for p in projects:
+        score = fuzz.ratio(project_name.strip().lower(), p["name"].lower())
+        if score > best_score:
+            best_score = score
+            best_id = p["id"]
+
+    if best_score >= 70:
+        return best_id
+    return None
+
+
 # ── Receipt submission (photo received) ─────────────────────
 
 
@@ -260,12 +286,18 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
 
     # Create the receipt record with OCR data
     project_name = body if body else None
+
+    # Resolve project name to project_id via fuzzy match
+    project_id = None
+    if project_name:
+        project_id = _resolve_project_id(db, project_name)
+
     cursor = db.execute(
         """INSERT INTO receipts
            (employee_id, image_path, vendor_name, vendor_city, vendor_state,
             purchase_date, subtotal, tax, total, payment_method,
-            matched_project_name, raw_ocr_json, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+            project_id, matched_project_name, raw_ocr_json, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
         (
             employee_id,
             image_path,
@@ -277,6 +309,7 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
             ocr_data.get("tax"),
             ocr_data.get("total"),
             ocr_data.get("payment_method"),
+            project_id,
             project_name,
             json.dumps(ocr_data),
         ),

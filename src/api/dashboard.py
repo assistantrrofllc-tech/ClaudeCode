@@ -327,8 +327,14 @@ def api_projects():
     try:
         rows = db.execute("""
             SELECT p.*,
-                   (SELECT COUNT(*) FROM receipts r WHERE r.project_id = p.id) as receipt_count,
-                   (SELECT COALESCE(SUM(r.total), 0) FROM receipts r WHERE r.project_id = p.id) as total_spend
+                   (SELECT COUNT(*) FROM receipts r
+                    WHERE r.status NOT IN ('deleted', 'duplicate')
+                      AND (r.project_id = p.id OR r.matched_project_name = p.name)
+                   ) as receipt_count,
+                   (SELECT COALESCE(SUM(r.total), 0) FROM receipts r
+                    WHERE r.status NOT IN ('deleted', 'duplicate')
+                      AND (r.project_id = p.id OR r.matched_project_name = p.name)
+                   ) as total_spend
             FROM projects p ORDER BY p.name
         """).fetchall()
         return jsonify([dict(r) for r in rows])
