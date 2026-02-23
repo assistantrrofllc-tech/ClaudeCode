@@ -409,23 +409,40 @@ def ledger_page():
         db.close()
 
 
-# ── Email Settings ──────────────────────────────────────
+# ── Projects Page ───────────────────────────────────────
 
 
-@dashboard_bp.route("/settings")
-def settings_page():
-    """Settings page — email, projects, links to employee management."""
+@dashboard_bp.route("/projects")
+def projects_page():
+    """Dedicated project management page."""
     db = get_db()
     try:
-        rows = db.execute("SELECT key, value FROM email_settings").fetchall()
-        settings = {r["key"]: r["value"] for r in rows}
-        employees = db.execute("SELECT id, first_name FROM employees ORDER BY first_name").fetchall()
         projects = db.execute("""
             SELECT p.*,
                    (SELECT COUNT(*) FROM receipts r WHERE r.project_id = p.id) as receipt_count,
                    (SELECT COALESCE(SUM(r.total), 0) FROM receipts r WHERE r.project_id = p.id) as total_spend
             FROM projects p ORDER BY p.name
         """).fetchall()
+        return render_template(
+            "projects.html",
+            projects=[dict(p) for p in projects],
+        )
+    finally:
+        db.close()
+
+
+# ── Email Settings ──────────────────────────────────────
+
+
+@dashboard_bp.route("/settings")
+def settings_page():
+    """Settings page — email config, links to employee/project management."""
+    db = get_db()
+    try:
+        rows = db.execute("SELECT key, value FROM email_settings").fetchall()
+        settings = {r["key"]: r["value"] for r in rows}
+        employees = db.execute("SELECT id, first_name FROM employees ORDER BY first_name").fetchall()
+        projects = db.execute("SELECT id, name FROM projects WHERE status = 'active' ORDER BY name").fetchall()
         return render_template(
             "settings.html",
             settings=settings,

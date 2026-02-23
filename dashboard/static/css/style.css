@@ -367,6 +367,8 @@ button { cursor: pointer; font-family: inherit; }
 .btn--danger:hover { background: #fecaca; }
 .btn--success { background: #dcfce7; color: #16a34a; }
 .btn--success:hover { background: #bbf7d0; }
+.btn--warning { background: #fef3c7; color: #d97706; }
+.btn--warning:hover { background: #fde68a; }
 .btn--small { padding: 4px 10px; font-size: 12px; }
 
 /* ── Forms ────────────────────────────────────────────── */

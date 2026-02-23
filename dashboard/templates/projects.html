@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% set active_page = "projects" %}
+{% block title %}CrewLedger — Projects{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Projects</h1>
+    <button class="btn btn--primary" onclick="showAddForm()">+ Add Project</button>
+</div>
+
+<!-- Add Project Form (hidden) -->
+<div id="add-form" class="card" style="display:none; margin-bottom:20px;">
+    <h3>Add New Project</h3>
+    <form onsubmit="addProject(event)">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Project Name *</label>
+                <input type="text" id="proj-name" required placeholder="Sparrow">
+            </div>
+            <div class="form-group">
+                <label>Project Code</label>
+                <input type="text" id="proj-code" placeholder="SPR-001">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Address</label>
+                <input type="text" id="proj-address" placeholder="123 Main St">
+            </div>
+            <div class="form-group">
+                <label>City</label>
+                <input type="text" id="proj-city" placeholder="Kissimmee">
+            </div>
+            <div class="form-group">
+                <label>State</label>
+                <input type="text" id="proj-state" placeholder="FL" maxlength="2">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Start Date</label>
+                <input type="date" id="proj-start">
+            </div>
+            <div class="form-group">
+                <label>End Date</label>
+                <input type="date" id="proj-end">
+            </div>
+        </div>
+        <div class="form-row" style="grid-template-columns: 1fr;">
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea id="proj-notes" rows="2" placeholder="Project notes..."></textarea>
+            </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+            <button type="submit" class="btn btn--primary">Save Project</button>
+            <button type="button" class="btn btn--secondary" onclick="hideAddForm()">Cancel</button>
+        </div>
+        <div id="add-error" class="error-msg" style="display:none;"></div>
+    </form>
+</div>
+
+<!-- Search -->
+<div class="search-bar">
+    <input type="text" id="proj-search" placeholder="Search by name, code, or city..." oninput="filterProjects()">
+</div>
+
+<!-- Project List -->
+<div class="card">
+    <table class="data-table" id="proj-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Code</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Start Date</th>
+                <th>Receipts</th>
+                <th>Spend</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in projects %}
+            <tr id="proj-row-{{ p.id }}" data-name="{{ p.name }}" data-code="{{ p.project_code or '' }}" data-city="{{ p.city or '' }}">
+                <td><strong>{{ p.name }}</strong></td>
+                <td class="text-muted">{{ p.project_code or '—' }}</td>
+                <td class="text-muted">{% if p.city %}{{ p.city }}{% if p.state %}, {{ p.state }}{% endif %}{% else %}—{% endif %}</td>
+                <td>
+                    {% if p.status == 'active' %}
+                    <span class="badge badge--confirmed">Active</span>
+                    {% elif p.status == 'on_hold' %}
+                    <span class="badge badge--pending">On Hold</span>
+                    {% else %}
+                    <span class="badge badge--rejected">Completed</span>
+                    {% endif %}
+                </td>
+                <td class="text-muted">{{ p.start_date or '—' }}</td>
+                <td>{{ p.receipt_count or 0 }}</td>
+                <td>${{ "%.2f"|format(p.total_spend or 0) }}</td>
+                <td class="cell-actions" style="white-space:nowrap;">
+                    <button class="btn btn--small btn--secondary" onclick="showEditForm({{ p.id }})">Edit</button>
+                    {% if p.status == 'active' %}
+                    <button class="btn btn--small btn--warning" onclick="setStatus({{ p.id }}, 'completed')">Complete</button>
+                    {% elif p.status == 'completed' %}
+                    <button class="btn btn--small btn--success" onclick="setStatus({{ p.id }}, 'active')">Reactivate</button>
+                    {% elif p.status == 'on_hold' %}
+                    <button class="btn btn--small btn--success" onclick="setStatus({{ p.id }}, 'active')">Reactivate</button>
+                    {% endif %}
+                    <button class="btn btn--small btn--danger" onclick="removeProject({{ p.id }}, '{{ p.name }}')">Remove</button>
+                </td>
+            </tr>
+            <!-- Edit form row (hidden) -->
+            <tr id="edit-row-{{ p.id }}" style="display:none;">
+                <td colspan="8" style="padding:12px;">
+                    <form onsubmit="saveEdit(event, {{ p.id }})">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Name *</label>
+                                <input type="text" id="edit-name-{{ p.id }}" value="{{ p.name }}" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Code</label>
+                                <input type="text" id="edit-code-{{ p.id }}" value="{{ p.project_code or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>Status</label>
+                                <select id="edit-status-{{ p.id }}">
+                                    <option value="active" {% if p.status == 'active' %}selected{% endif %}>Active</option>
+                                    <option value="on_hold" {% if p.status == 'on_hold' %}selected{% endif %}>On Hold</option>
+                                    <option value="completed" {% if p.status == 'completed' %}selected{% endif %}>Completed</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Address</label>
+                                <input type="text" id="edit-address-{{ p.id }}" value="{{ p.address or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>City</label>
+                                <input type="text" id="edit-city-{{ p.id }}" value="{{ p.city or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>State</label>
+                                <input type="text" id="edit-state-{{ p.id }}" value="{{ p.state or '' }}" maxlength="2">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Start Date</label>
+                                <input type="date" id="edit-start-{{ p.id }}" value="{{ p.start_date or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>End Date</label>
+                                <input type="date" id="edit-end-{{ p.id }}" value="{{ p.end_date or '' }}">
+                            </div>
+                        </div>
+                        <div class="form-row" style="grid-template-columns: 1fr;">
+                            <div class="form-group">
+                                <label>Notes</label>
+                                <textarea id="edit-notes-{{ p.id }}" rows="2">{{ p.notes or '' }}</textarea>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:8px;">
+                            <button type="submit" class="btn btn--primary">Save</button>
+                            <button type="button" class="btn btn--secondary" onclick="hideEditForm({{ p.id }})">Cancel</button>
+                        </div>
+                        <div id="edit-error-{{ p.id }}" class="error-msg" style="display:none;"></div>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            {% if not projects %}
+            <tr><td colspan="8" class="text-muted" style="text-align:center;">No projects yet</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showAddForm() {
+    document.getElementById('add-form').style.display = 'block';
+    document.getElementById('proj-name').focus();
+}
+function hideAddForm() {
+    document.getElementById('add-form').style.display = 'none';
+    document.getElementById('add-error').style.display = 'none';
+}
+
+function addProject(e) {
+    e.preventDefault();
+    var data = {
+        name: document.getElementById('proj-name').value,
+        project_code: document.getElementById('proj-code').value || undefined,
+        address: document.getElementById('proj-address').value || undefined,
+        city: document.getElementById('proj-city').value || undefined,
+        state: document.getElementById('proj-state').value || undefined,
+        status: 'active',
+        start_date: document.getElementById('proj-start').value || undefined,
+        end_date: document.getElementById('proj-end').value || undefined,
+        notes: document.getElementById('proj-notes').value || undefined,
+    };
+    fetch('/api/projects', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    })
+    .then(function(resp) { return resp.json().then(function(d) { return {status: resp.status, data: d}; }); })
+    .then(function(r) {
+        if (r.status === 201) {
+            location.reload();
+        } else {
+            var errEl = document.getElementById('add-error');
+            errEl.textContent = r.data.error || 'Failed to add project';
+            errEl.style.display = 'block';
+        }
+    });
+}
+
+function showEditForm(id) {
+    // Hide any other open edit forms
+    document.querySelectorAll('[id^="edit-row-"]').forEach(function(r) { r.style.display = 'none'; });
+    document.getElementById('edit-row-' + id).style.display = '';
+}
+function hideEditForm(id) {
+    document.getElementById('edit-row-' + id).style.display = 'none';
+}
+
+function saveEdit(e, id) {
+    e.preventDefault();
+    var data = {
+        name: document.getElementById('edit-name-' + id).value,
+        project_code: document.getElementById('edit-code-' + id).value || null,
+        status: document.getElementById('edit-status-' + id).value,
+        address: document.getElementById('edit-address-' + id).value || null,
+        city: document.getElementById('edit-city-' + id).value || null,
+        state: document.getElementById('edit-state-' + id).value || null,
+        start_date: document.getElementById('edit-start-' + id).value || null,
+        end_date: document.getElementById('edit-end-' + id).value || null,
+        notes: document.getElementById('edit-notes-' + id).value || null,
+    };
+    fetch('/api/projects/' + id, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    })
+    .then(function(resp) { return resp.json().then(function(d) { return {status: resp.status, data: d}; }); })
+    .then(function(r) {
+        if (r.status === 200) {
+            location.reload();
+        } else {
+            var errEl = document.getElementById('edit-error-' + id);
+            errEl.textContent = r.data.error || 'Failed to update';
+            errEl.style.display = 'block';
+        }
+    });
+}
+
+function setStatus(id, status) {
+    fetch('/api/projects/' + id, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: status}),
+    })
+    .then(function() { location.reload(); });
+}
+
+function removeProject(id, name) {
+    if (!confirm('Remove project "' + name + '"? Receipts linked to it will be kept but unlinked. This cannot be undone.')) return;
+    fetch('/api/projects/' + id, { method: 'DELETE' })
+    .then(function(resp) { return resp.json(); })
+    .then(function(d) {
+        if (d.status === 'deleted') {
+            document.getElementById('proj-row-' + id).remove();
+            var editRow = document.getElementById('edit-row-' + id);
+            if (editRow) editRow.remove();
+        } else {
+            alert(d.error || 'Failed to remove project');
+        }
+    });
+}
+
+function filterProjects() {
+    var query = document.getElementById('proj-search').value.toLowerCase();
+    var rows = document.querySelectorAll('#proj-table tbody tr[data-name]');
+    rows.forEach(function(row) {
+        var name = (row.getAttribute('data-name') || '').toLowerCase();
+        var code = (row.getAttribute('data-code') || '').toLowerCase();
+        var city = (row.getAttribute('data-city') || '').toLowerCase();
+        var match = name.indexOf(query) >= 0 || code.indexOf(query) >= 0 || city.indexOf(query) >= 0;
+        row.style.display = match ? '' : 'none';
+        // Also hide/show the edit row
+        var editRow = document.getElementById('edit-row-' + row.id.replace('proj-row-', ''));
+        if (editRow && !match) editRow.style.display = 'none';
+    });
+}
+</script>
+{% endblock %}
