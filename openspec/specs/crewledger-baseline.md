@@ -1,7 +1,7 @@
 # CrewLedger — Baseline Spec
 
 **Status:** Deployed to production (Hostinger KVM 2 VPS)
-**Version:** 2.0 (Phase 1 + Phase 2B)
+**Version:** 2.1 (Phase 1 + Phase 2B + Category Management)
 **Date:** February 2026
 **Owner:** Robert Cordero — Tech Quest LLC
 
@@ -56,7 +56,7 @@ Employees text photos of receipts to a Twilio phone number. The system uses GPT-
 
 ## 3. Database Schema
 
-**10 tables** in SQLite (`data/crewledger.db`):
+**10 tables** in SQLite (`data/crewledger.db`), including audit trail and conversation state:
 
 ### employees
 Phone number is the unique identifier. No passwords, no signup form. Auto-registered on first text. Manageable from dashboard.
@@ -101,6 +101,7 @@ Core table. One row per receipt submitted via SMS.
 | id | INTEGER PK | Auto-increment |
 | employee_id | INTEGER FK | → employees.id |
 | project_id | INTEGER FK | → projects.id (nullable — set to NULL on project delete) |
+| category_id | INTEGER FK | → categories.id (one category per receipt) |
 | vendor_name | TEXT | From OCR |
 | vendor_city | TEXT | From OCR |
 | vendor_state | TEXT | From OCR |
@@ -110,8 +111,9 @@ Core table. One row per receipt submitted via SMS.
 | total | REAL | |
 | payment_method | TEXT | CASH or last 4 digits |
 | image_path | TEXT | Local filesystem path |
-| status | TEXT | `pending`, `confirmed`, `flagged`, `rejected` |
+| status | TEXT | `pending`, `confirmed`, `flagged`, `rejected`, `deleted`, `duplicate` |
 | flag_reason | TEXT | Why it was flagged |
+| duplicate_of | INTEGER FK | → receipts.id (if marked as duplicate) |
 | is_return | INTEGER | 1 if return/refund |
 | is_missed_receipt | INTEGER | 1 if no physical receipt |
 | matched_project_name | TEXT | Raw text from employee caption |
@@ -135,14 +137,27 @@ Individual items from a receipt.
 | category_id | INTEGER FK | → categories.id |
 
 ### categories
-Lookup table for auto-categorization. Pre-seeded with 7 defaults:
-1. Roofing Materials
-2. Tools & Equipment
-3. Fasteners & Hardware
-4. Safety & PPE
-5. Fuel & Propane
-6. Office & Misc
-7. Consumables
+Lookup table for receipt-level categorization. Manageable from Settings page. Pre-seeded with 8 defaults (in dropdown order):
+
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | Auto-increment |
+| name | TEXT UNIQUE | Category name |
+| description | TEXT | What it covers |
+| is_active | INTEGER | Default 1 (soft deactivate) |
+| sort_order | INTEGER | Controls dropdown ordering |
+
+**Default categories:**
+1. Materials — Lumber, concrete, roofing materials, fasteners, adhesives
+2. Fuel — Gas stations, diesel, fuel for equipment
+3. Food & Drinks — Crew meals, drinks, snacks on the job
+4. Tools & Equipment — Hand tools, power tools, equipment purchases
+5. Safety Gear — Vests, helmets, harnesses, gloves, eyewear
+6. Office & Admin — Printing, office supplies, postage, permits
+7. Lodging — Hotels, extended stay for out of town jobs
+8. Other — Anything that doesn't fit the above
+
+**One category per receipt** (not per line item). OCR suggests category, admin can override. Deactivated categories hide from dropdowns but historical receipts keep their label.
 
 ### conversation_state
 Tracks per-employee SMS conversation flow. One active state per employee.
@@ -266,7 +281,7 @@ System:
 
 **Model:** GPT-4o-mini Vision API
 **Input:** Base64-encoded receipt image (JPEG, PNG, GIF, WebP supported)
-**Output:** Structured JSON with vendor info, date, amounts, payment method, line items
+**Output:** Structured JSON with vendor info, date, amounts, payment method, category suggestion, line items
 **Cost:** ~$0.01 per receipt (~$2-5/month at scale)
 
 Response parsing handles:
@@ -303,12 +318,15 @@ Mobile-first web dashboard built with plain HTML/CSS/JS (Jinja2 templates). No R
 ### 5.2 Ledger Page (`/ledger`)
 
 Banking-style transaction view:
-- **Time filters** — All, Today, This Week, This Month, YTD, Custom date range
+- **Time filters** — All, Today, This Week, This Month, YTD, Custom date range (uses `purchase_date`, not `created_at`)
 - **Filters** — Status, Employee, Project dropdowns + Sort/Order controls
 - **Totals bar** — Transaction count + total amount
-- **Transaction table** — Date, Employee, Vendor, Project, Amount, Status, Notes, Image button
+- **Transaction table** — Date, Employee, Vendor, Project, Category (blue badge), Amount, Status, Notes, Image button
+- **Inline actions** — Edit (pencil icon) and Delete (trash icon) per row
+- **Add Receipt** — Manual entry form with vendor, date, amounts, payment, project, category, employee
 - **Export** — QuickBooks CSV, Google Sheets CSV, Excel (.xlsx) dropdown
 - **Print** — Print-optimized layout with company header and totals
+- **Show Hidden** — Toggle to include deleted/duplicate receipts with Restore option
 
 ### 5.3 Employee Management (`/employees`)
 
@@ -321,16 +339,18 @@ Banking-style transaction view:
 
 - **Employee Management** link
 - **Projects** — Add/edit/remove projects with full metadata (code, address, city, state, status, dates, notes)
+- **Categories** — Table with Name/Status/Actions. Add new category, rename (with receipt count warning), deactivate/reactivate. Soft deactivate only — no permanent deletion.
 - **Email Reports** — Configure recipient, frequency (daily/weekly/bi-weekly/monthly), day of week, time of day, scope (everyone/specific employee/specific project), enable/disable, send now
 
 ### 5.5 Receipt Image Modal
 
 Click any receipt image to view:
 - Full-size receipt photo
-- Details grid (vendor, date, amounts, payment method)
+- Details grid (vendor, date, amounts, payment method, category)
 - Notes textarea with inline save
 - Line items table
-- Edit button + edit history button
+- **Footer actions:** Edit Receipt, Edit History, Confirm (pending/flagged only), Mark Duplicate, Delete, Restore (deleted/duplicate only)
+- Edit form includes category dropdown
 
 ### 5.6 Dashboard Stats API (`/api/dashboard/stats`)
 
@@ -342,9 +362,11 @@ Returns: week_spend, month_spend, total_receipts, flagged_count, pending_count, 
 
 Any receipt field can be edited from the dashboard. Every change is logged to `receipt_edits`:
 
-- **Editable fields:** vendor_name, vendor_city, vendor_state, purchase_date, subtotal, tax, total, payment_method, notes, matched_project_name, project_id
+- **Editable fields:** vendor_name, vendor_city, vendor_state, purchase_date, subtotal, tax, total, payment_method, notes, matched_project_name, project_id, category_id, status, duplicate_of
 - **Audit trail:** old_value, new_value, edited_at, edited_by stored per field change
 - **Flagged receipt actions:** Approve (→ confirmed), Dismiss (→ rejected), Edit and Approve (edit + confirm in one step)
+- **Receipt lifecycle actions:** Confirm (pending/flagged → confirmed), Delete (soft delete, status → deleted), Mark Duplicate (status → duplicate, optional duplicate_of reference), Restore (deleted/duplicate → pending)
+- **Conversation state clearing:** When receipts are confirmed/deleted via dashboard, any stuck SMS conversation state is automatically cleared
 - **Edit history** viewable per receipt via `/api/receipts/<id>/edits`
 
 ---
@@ -442,11 +464,15 @@ Supports all ledger filters (period, date range, employee, project, vendor, stat
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/receipts` | GET | List receipts with filters |
+| `/api/receipts` | POST | Manually add a receipt from dashboard |
 | `/api/receipts/export` | GET | Export filtered receipts (CSV/Excel) |
 | `/api/receipts/<id>` | GET | Receipt detail with line items |
 | `/api/receipts/<id>/edit` | POST | Edit receipt with audit trail |
 | `/api/receipts/<id>/edits` | GET | Receipt edit history |
 | `/api/receipts/<id>/notes` | PUT | Update receipt notes |
+| `/api/receipts/<id>/delete` | POST | Soft delete receipt (status → deleted) |
+| `/api/receipts/<id>/restore` | POST | Restore deleted/duplicate receipt |
+| `/api/receipts/<id>/duplicate` | POST | Mark receipt as duplicate |
 | `/receipts/image/<filename>` | GET | Serve receipt image |
 
 ### Employees API
@@ -467,6 +493,15 @@ Supports all ledger filters (period, date range, employee, project, vendor, stat
 | `/api/projects/<id>` | GET | Project detail |
 | `/api/projects/<id>` | PUT | Update project |
 | `/api/projects/<id>` | DELETE | Delete project (unlinks receipts) |
+
+### Categories API
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/categories` | GET | List all categories (with `?active=1` filter). Includes receipt_count |
+| `/api/categories` | POST | Add new category |
+| `/api/categories/<id>` | PUT | Rename category (with duplicate check) |
+| `/api/categories/<id>/deactivate` | POST | Soft deactivate category |
+| `/api/categories/<id>/activate` | POST | Reactivate category |
 
 ### Settings API
 | Endpoint | Method | Purpose |
@@ -582,8 +617,7 @@ All config centralized in `config/settings.py`, read from environment variables 
 These are documented in the roadmap (`CREWOS_ROADMAP.md`) but have **no code written**:
 
 - **GitHub Actions CI/CD** — Workflow file exists, needs SSH secrets configured and merge to main
-- **Duplicate Detection** — No implementation yet
-- **Auto-Categorization** — Category table seeded but items not auto-tagged on receipt submission
+- **Automated Duplicate Detection** — Manual mark-as-duplicate exists, no automatic detection yet
 - **Cost Intelligence** — Unit cost tracking, anomaly detection, vendor comparison (Phase 3)
 - **Price Comparison** — Google Shopping / Amazon search for line items (Phase 3)
 - **Module 2: Inventory Tracker** — Shop supplies, recurring orders, tool inventory (Phase 4)
@@ -591,4 +625,4 @@ These are documented in the roadmap (`CREWOS_ROADMAP.md`) but have **no code wri
 
 ---
 
-*Baseline spec updated February 2026 | CrewLedger v2.0 | Phase 1 + Phase 2B deployed*
+*Baseline spec updated February 23, 2026 | CrewLedger v2.1 | Phase 1 + Phase 2B + Category Management deployed*
