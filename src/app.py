@@ -5,6 +5,7 @@ Run with:
     python src/app.py
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -31,6 +32,13 @@ def create_app() -> Flask:
         static_folder=str(Path(__file__).resolve().parent.parent / "dashboard" / "static"),
     )
     app.secret_key = SECRET_KEY
+
+    # Cache-busting version for static files (changes on each deploy)
+    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "2")
+
+    @app.context_processor
+    def inject_cache_version():
+        return {"cache_version": app.config["CACHE_VERSION"]}
 
     # Register blueprints
     app.register_blueprint(twilio_bp)
