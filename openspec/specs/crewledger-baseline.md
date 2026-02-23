@@ -1,25 +1,25 @@
-# CrewLedger Phase 1 — Baseline Spec
+# CrewLedger — Baseline Spec
 
 **Status:** Deployed to production (Hostinger KVM 2 VPS)
-**Version:** 1.0
+**Version:** 2.0 (Phase 1 + Phase 2B)
 **Date:** February 2026
-**Owner:** Robert Cordero — Roofing & Renovations of Florida LLC
+**Owner:** Robert Cordero — Tech Quest LLC
 
 ---
 
 ## 1. System Overview
 
-CrewLedger is a field operations platform for trades companies. Phase 1 ("The Ledger") replaces manual receipt collection with an SMS-based system that reads, confirms, categorizes, stores, and reports on every purchase automatically.
+CrewLedger is a field operations platform for trades companies. Module 1 ("The Ledger") replaces manual receipt collection with an SMS-based system that reads, confirms, categorizes, stores, and reports on every purchase automatically.
 
-Employees text photos of receipts to a Twilio phone number. The system uses GPT-4o-mini Vision to extract structured data, sends a confirmation back via SMS, and saves everything to a SQLite database. A weekly email report is sent to the accountant automatically.
+Employees text photos of receipts to a Twilio phone number. The system uses GPT-4o-mini Vision to extract structured data, sends a confirmation back via SMS, and saves everything to a SQLite database. Management uses a mobile-first web dashboard for oversight. The accountant receives configurable email reports and can export to QuickBooks.
 
 ### Users
 
 | Role | How They Access | What They Do |
 |---|---|---|
 | **Employees (Field Crew)** | SMS (text messages) | Submit receipts by texting photos with project names |
-| **Management (Robert)** | Web dashboard (planned) | Oversee spending, review flagged receipts, cost intelligence |
-| **Accountant (Kim)** | Email + dashboard (planned) | Weekly reports, QuickBooks export, receipt image access |
+| **Management** | Web dashboard | Oversee spending, review flagged receipts, manage employees/projects |
+| **Accountant** | Email + dashboard | Configurable reports, QuickBooks/CSV/Excel export, receipt image access |
 
 ---
 
@@ -35,15 +35,17 @@ Employees text photos of receipts to a Twilio phone number. The system uses GPT-
 | Fuzzy Matching | thefuzz + python-Levenshtein | thefuzz 0.22+ |
 | Email | Python SMTP (Gmail) | stdlib smtplib |
 | Config | python-dotenv | 1.0+ |
-| WSGI Server | Gunicorn | 21.2+ |
+| WSGI Server | Gunicorn | 25.1+ |
 | Reverse Proxy | Nginx | with Let's Encrypt SSL |
 | Process Manager | systemd | auto-restart on failure |
+| Frontend | Plain HTML/CSS/JS | No framework, no build step |
+| Spec Management | OpenSpec | @fission-ai/openspec |
 
 ### Deployed Infrastructure
 
 | Item | Detail |
 |---|---|
-| **Server** | Hostinger KVM 2 VPS — `srv1306217.hstgr.cloud` |
+| **Server** | Hostinger KVM 2 VPS — `srv1306217.hstgr.cloud` (IP: `76.13.109.32`) |
 | **App Path** | `/opt/crewledger` |
 | **Service** | `systemd` unit: `crewledger.service` |
 | **Logs** | `/var/log/crewledger/` |
@@ -54,10 +56,10 @@ Employees text photos of receipts to a Twilio phone number. The system uses GPT-
 
 ## 3. Database Schema
 
-**7 tables** in SQLite (`data/crewledger.db`):
+**10 tables** in SQLite (`data/crewledger.db`):
 
 ### employees
-Phone number is the unique identifier. No passwords, no signup form. Auto-registered on first text.
+Phone number is the unique identifier. No passwords, no signup form. Auto-registered on first text. Manageable from dashboard.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -67,21 +69,29 @@ Phone number is the unique identifier. No passwords, no signup form. Auto-regist
 | full_name | TEXT | Optional |
 | role | TEXT | Optional |
 | crew | TEXT | Optional |
+| employee_uuid | TEXT UNIQUE | UUID identifier |
+| photo | TEXT | Path to employee photo |
 | is_active | INTEGER | Default 1 |
 | created_at | TEXT | datetime |
 | updated_at | TEXT | datetime |
 
 ### projects
-Shared across all modules. Receipt tagging fuzzy-matches against project names.
+Shared across all modules. Receipt tagging fuzzy-matches against project names. Full CRUD from dashboard.
 
 | Column | Type | Notes |
 |---|---|---|
 | id | INTEGER PK | Auto-increment |
+| project_code | TEXT UNIQUE | Optional project code (e.g., "SPR-001") |
 | name | TEXT UNIQUE | Project codename (e.g., "Sparrow") |
 | address | TEXT | Job site address |
 | city | TEXT | |
 | state | TEXT | |
 | status | TEXT | `active`, `completed`, `on_hold` |
+| start_date | TEXT | Optional |
+| end_date | TEXT | Optional |
+| notes | TEXT | Free-text project notes |
+| created_at | TEXT | datetime |
+| updated_at | TEXT | datetime |
 
 ### receipts
 Core table. One row per receipt submitted via SMS.
@@ -90,7 +100,7 @@ Core table. One row per receipt submitted via SMS.
 |---|---|---|
 | id | INTEGER PK | Auto-increment |
 | employee_id | INTEGER FK | → employees.id |
-| project_id | INTEGER FK | → projects.id |
+| project_id | INTEGER FK | → projects.id (nullable — set to NULL on project delete) |
 | vendor_name | TEXT | From OCR |
 | vendor_city | TEXT | From OCR |
 | vendor_state | TEXT | From OCR |
@@ -106,6 +116,7 @@ Core table. One row per receipt submitted via SMS.
 | is_missed_receipt | INTEGER | 1 if no physical receipt |
 | matched_project_name | TEXT | Raw text from employee caption |
 | fuzzy_match_score | REAL | Match confidence |
+| notes | TEXT | Free-text management annotations |
 | raw_ocr_json | TEXT | Full GPT response |
 | created_at | TEXT | When submitted |
 | confirmed_at | TEXT | When employee replied YES |
@@ -143,12 +154,49 @@ Tracks per-employee SMS conversation flow. One active state per employee.
 | state | TEXT | `idle`, `awaiting_confirmation`, `awaiting_manual_entry`, `awaiting_missed_details` |
 | context_json | TEXT | Flow-specific context data |
 
+### receipt_edits
+Audit trail for every field change made to a receipt after initial OCR.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | Auto-increment |
+| receipt_id | INTEGER FK | → receipts.id (CASCADE delete) |
+| field_changed | TEXT NOT NULL | Which field was modified |
+| old_value | TEXT | Previous value |
+| new_value | TEXT | Updated value |
+| edited_at | TEXT | Default datetime('now') |
+| edited_by | TEXT | Default 'dashboard' |
+
+### unknown_contacts
+Logs SMS attempts from unregistered phone numbers for management review.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | Auto-increment |
+| phone_number | TEXT NOT NULL | Sender's number |
+| message_body | TEXT | What they sent |
+| has_media | INTEGER | Default 0 |
+| created_at | TEXT | Default datetime('now') |
+
+### email_settings
+Key-value store for accountant-controlled report scheduling.
+
+| Column | Type | Notes |
+|---|---|---|
+| key | TEXT PK | Setting name |
+| value | TEXT | Setting value |
+| updated_at | TEXT | Default datetime('now') |
+
+Default keys: `recipient_email`, `frequency` (weekly), `day_of_week` (1=Monday), `time_of_day` (08:00), `include_scope` (all), `include_filter`, `enabled` (1).
+
 ### Indexes
 - `idx_employees_phone` — unique on phone_number
 - `idx_projects_name`, `idx_projects_status`
 - `idx_receipts_employee`, `idx_receipts_project`, `idx_receipts_status`, `idx_receipts_vendor`, `idx_receipts_date`, `idx_receipts_created`
 - `idx_line_items_receipt`, `idx_line_items_category`, `idx_line_items_name`
 - `idx_convo_employee`, `idx_convo_state`
+- `idx_receipt_edits_receipt`, `idx_receipt_edits_date`
+- `idx_unknown_phone`, `idx_unknown_created`
 
 ---
 
@@ -158,7 +206,7 @@ Tracks per-employee SMS conversation flow. One active state per employee.
 
 **Endpoint:** `POST /webhook/sms`
 
-Receives all incoming SMS/MMS from Twilio. Validates signature, parses message (sender phone, body text, media URLs), routes to SMS handler, returns TwiML response.
+Receives all incoming SMS/MMS from Twilio. Validates signature, parses message (sender phone, body text, media URLs), routes to SMS handler, returns TwiML response. Unknown senders are logged to `unknown_contacts` table.
 
 **Twilio fields parsed:** `From`, `Body`, `NumMedia`, `MediaUrl0..N`, `MediaContentType0..N`, `MessageSid`, `To`
 
@@ -241,9 +289,69 @@ Line items capped at 5 in the confirmation SMS to keep it readable.
 
 ---
 
-## 5. Weekly Email Report
+## 5. Web Dashboard
 
-### 5.1 Report Generation
+Mobile-first web dashboard built with plain HTML/CSS/JS (Jinja2 templates). No React, no build step. All templates extend `base.html` with sticky navigation bar.
+
+### 5.1 Home Page (`/`)
+
+- **Stats row** — 4 cards: This Week spend, This Month spend, Total Receipts, Flagged Count (red highlight when > 0)
+- **Flagged Receipts** — Review queue with image button, vendor, employee, flag reason, amount
+- **Recent Activity** — Latest receipts with vendor, employee, project, amount, status badge, notes
+- **Unknown Contacts** — SMS attempts from unregistered numbers
+
+### 5.2 Ledger Page (`/ledger`)
+
+Banking-style transaction view:
+- **Time filters** — All, Today, This Week, This Month, YTD, Custom date range
+- **Filters** — Status, Employee, Project dropdowns + Sort/Order controls
+- **Totals bar** — Transaction count + total amount
+- **Transaction table** — Date, Employee, Vendor, Project, Amount, Status, Notes, Image button
+- **Export** — QuickBooks CSV, Google Sheets CSV, Excel (.xlsx) dropdown
+- **Print** — Print-optimized layout with company header and totals
+
+### 5.3 Employee Management (`/employees`)
+
+- Add new employees (first name, full name, phone, crew, role)
+- Search/filter by name or crew
+- Activate/deactivate employees
+- View last submission date per employee
+
+### 5.4 Settings (`/settings`)
+
+- **Employee Management** link
+- **Projects** — Add/edit/remove projects with full metadata (code, address, city, state, status, dates, notes)
+- **Email Reports** — Configure recipient, frequency (daily/weekly/bi-weekly/monthly), day of week, time of day, scope (everyone/specific employee/specific project), enable/disable, send now
+
+### 5.5 Receipt Image Modal
+
+Click any receipt image to view:
+- Full-size receipt photo
+- Details grid (vendor, date, amounts, payment method)
+- Notes textarea with inline save
+- Line items table
+- Edit button + edit history button
+
+### 5.6 Dashboard Stats API (`/api/dashboard/stats`)
+
+Returns: week_spend, month_spend, total_receipts, flagged_count, pending_count, confirmed_count, employee_count, project_count, unknown_count. All counts wrapped with COALESCE to handle empty database.
+
+---
+
+## 6. Receipt Editing & Audit Trail
+
+Any receipt field can be edited from the dashboard. Every change is logged to `receipt_edits`:
+
+- **Editable fields:** vendor_name, vendor_city, vendor_state, purchase_date, subtotal, tax, total, payment_method, notes, matched_project_name, project_id
+- **Audit trail:** old_value, new_value, edited_at, edited_by stored per field change
+- **Flagged receipt actions:** Approve (→ confirmed), Dismiss (→ rejected), Edit and Approve (edit + confirm in one step)
+- **Edit history** viewable per receipt via `/api/receipts/<id>/edits`
+
+---
+
+## 7. Weekly Email Report
+
+### 7.1 Report Generation
 
 **Data aggregation** (`report_generator.py`):
 - Queries all receipts for a date range, grouped by employee
@@ -251,13 +359,13 @@ Line items capped at 5 in the confirmation SMS to keep it readable.
 - Flagged receipts highlighted separately
 - Default range: previous Monday–Sunday
 
-### 5.2 Email Rendering
+### 7.2 Email Rendering
 
 Two formats generated:
 - **HTML:** Professional styled email with header, summary bar (total spend, receipt count, employee count), employee sections, flagged receipt alerts, line item detail
 - **Plaintext:** Fallback for email clients that don't render HTML
 
-### 5.3 Report API Endpoints
+### 7.3 Report API Endpoints
 
 | Endpoint | Method | Purpose |
 |---|---|---|
@@ -267,35 +375,121 @@ Two formats generated:
 
 All support `week_start` and `week_end` query params for custom date ranges. The send endpoint also accepts a `recipient` override.
 
-### 5.4 Automated Delivery
+### 7.4 Configurable Delivery
 
-Cron job configured: `0 8 * * 1` — sends report every Monday at 8:00 AM via `POST /reports/weekly/send`.
+Report scheduling controlled via `email_settings` table (editable from Settings page):
+- Frequency: daily, weekly, bi-weekly, monthly
+- Day of week, time of day
+- Scope: all employees, specific employee, specific project
+- Enable/disable toggle
+- Cron job: `0 8 * * 1` — sends via `POST /reports/weekly/send`
 
 ---
 
-## 6. API Endpoints Summary
+## 8. Export
 
+### 8.1 QuickBooks CSV (`/export/quickbooks`)
+
+- Columns: Date, Vendor, Account (category), Amount, Tax, Total, Payment Method, Memo (Project — Employee), Line Items (pipe-separated)
+- Filters: week_start, week_end, employee_id, project, category
+- Default range: last Monday–Sunday
+- Only includes confirmed and pending receipts
+
+### 8.2 Dashboard Export (`/api/receipts/export`)
+
+Three format options:
+- **QuickBooks CSV** — Account column, memo field, pipe-separated line items
+- **Google Sheets CSV** — Standard format with all fields
+- **Excel (.xlsx)** — Formatted with header styling, auto-width columns, total row, money formatting
+
+Supports all ledger filters (period, date range, employee, project, vendor, status, sort).
+
+---
+
+## 9. API Endpoints Summary
+
+### SMS & Reports
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/webhook/sms` | POST | Twilio SMS/MMS webhook receiver |
+| `/health` | GET | Liveness check: `{"status": "ok"}` |
 | `/reports/weekly/preview` | GET | HTML report preview |
 | `/reports/weekly/send` | POST | Send weekly email report |
 | `/reports/weekly/data` | GET | JSON report data |
-| `/health` | GET | Liveness check: `{"status": "ok"}` |
+| `/export/quickbooks` | GET | QuickBooks CSV export |
+
+### Dashboard Pages
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/` | GET | Dashboard home page |
+| `/ledger` | GET | Banking-style transaction ledger |
+| `/employees` | GET | Employee management page |
+| `/settings` | GET | Settings page |
+
+### Dashboard API
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/dashboard/stats` | GET | Dashboard summary statistics |
+| `/api/dashboard/summary` | GET | Home screen data with breakdowns |
+| `/api/dashboard/flagged` | GET | Flagged receipt queue |
+| `/api/dashboard/flagged/<id>/approve` | POST | Approve flagged receipt |
+| `/api/dashboard/flagged/<id>/dismiss` | POST | Dismiss flagged receipt |
+| `/api/dashboard/flagged/<id>/edit` | POST | Edit and approve flagged receipt |
+| `/api/dashboard/search` | GET | Advanced search with pagination |
+| `/api/dashboard/employee/<id>/receipts` | GET | Employee receipt drill-down |
+
+### Receipts API
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/receipts` | GET | List receipts with filters |
+| `/api/receipts/export` | GET | Export filtered receipts (CSV/Excel) |
+| `/api/receipts/<id>` | GET | Receipt detail with line items |
+| `/api/receipts/<id>/edit` | POST | Edit receipt with audit trail |
+| `/api/receipts/<id>/edits` | GET | Receipt edit history |
+| `/api/receipts/<id>/notes` | PUT | Update receipt notes |
+| `/receipts/image/<filename>` | GET | Serve receipt image |
+
+### Employees API
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/employees` | GET | List all employees |
+| `/api/employees` | POST | Add new employee |
+| `/api/employees/<id>` | GET | Employee detail |
+| `/api/employees/<id>` | PUT | Update employee |
+| `/api/employees/<id>/activate` | POST | Reactivate employee |
+| `/api/employees/<id>/deactivate` | POST | Deactivate employee |
+
+### Projects API
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/projects` | GET | List all projects |
+| `/api/projects` | POST | Add new project |
+| `/api/projects/<id>` | GET | Project detail |
+| `/api/projects/<id>` | PUT | Update project |
+| `/api/projects/<id>` | DELETE | Delete project (unlinks receipts) |
+
+### Settings API
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/settings` | GET | Get email settings |
+| `/api/settings` | PUT | Update email settings |
+| `/api/settings/send-now` | POST | Send report immediately |
+| `/api/unknown-contacts` | GET | List unknown SMS contacts |
 
 ---
 
-## 7. Image Storage
+## 10. Image Storage
 
 - **Path:** `storage/receipts/` (production: `/opt/crewledger/storage/receipts/`)
 - **Naming:** `{firstName}_{YYYYMMDD}_{HHMMSS}.jpg`
 - **Download:** Authenticated HTTP GET from Twilio media URLs
+- **Serving:** `GET /receipts/image/<filename>` with path traversal protection
 - **Persistence:** Every photo saved permanently, tied to receipt record via `image_path`
 - **Backup:** Included in `deploy/backup.sh` daily archive
 
 ---
 
-## 8. Configuration
+## 11. Configuration
 
 All config centralized in `config/settings.py`, read from environment variables (`.env` file):
 
@@ -316,7 +510,7 @@ All config centralized in `config/settings.py`, read from environment variables 
 
 ---
 
-## 9. Project Structure
+## 12. Project Structure
 
 ```
 /opt/crewledger/
@@ -324,10 +518,12 @@ All config centralized in `config/settings.py`, read from environment variables 
 │   ├── app.py                    # Flask entry point, create_app()
 │   ├── api/
 │   │   ├── twilio_webhook.py     # POST /webhook/sms
+│   │   ├── dashboard.py          # All dashboard routes + API endpoints
+│   │   ├── export.py             # GET /export/quickbooks
 │   │   └── reports.py            # GET/POST /reports/*
 │   ├── database/
 │   │   ├── connection.py         # SQLite connection manager
-│   │   └── schema.sql            # Full schema (7 tables)
+│   │   └── schema.sql            # Full schema (10 tables)
 │   ├── messaging/
 │   │   └── sms_handler.py        # SMS routing + conversation flow
 │   └── services/
@@ -338,14 +534,23 @@ All config centralized in `config/settings.py`, read from environment variables 
 ├── config/
 │   └── settings.py               # Centralized env config
 ├── scripts/
-│   └── setup_db.py               # DB init + seed script
+│   ├── setup_db.py               # DB init + seed script
+│   └── load_sample_data.py       # Demo data loader (idempotent)
 ├── dashboard/
-│   ├── static/{css,js,images}/   # Frontend assets (placeholder)
-│   └── templates/                # Jinja2 templates (placeholder)
+│   ├── static/
+│   │   ├── css/style.css         # Mobile-first dashboard styling
+│   │   ├── js/app.js             # Receipt modal + client-side logic
+│   │   └── images/               # Logos/icons (placeholder)
+│   └── templates/
+│       ├── base.html             # Master layout + nav + receipt modal
+│       ├── index.html            # Dashboard home
+│       ├── ledger.html           # Banking-style transaction ledger
+│       ├── employees.html        # Employee management
+│       └── settings.html         # Settings + projects + email config
 ├── deploy/
 │   ├── setup.sh                  # Full VPS provisioning script
 │   ├── update.sh                 # Pull + restart script
-│   ├── backup.sh                 # DB + image backup
+│   ├── backup.sh                 # DB + image backup (30-day retention)
 │   ├── gunicorn.conf.py          # WSGI server config
 │   ├── nginx/crewledger.conf     # Reverse proxy + SSL
 │   ├── crewledger.service        # systemd unit file
@@ -353,10 +558,16 @@ All config centralized in `config/settings.py`, read from environment variables 
 ├── tests/
 │   ├── test_ocr.py               # OCR parsing tests
 │   ├── test_twilio_webhook.py    # Webhook + SMS tests
-│   └── test_weekly_report.py     # Report generation tests
+│   ├── test_weekly_report.py     # Report generation tests
+│   ├── test_dashboard.py         # Dashboard API tests
+│   └── test_export.py            # CSV export tests
 ├── legal/
+│   ├── index.html                # Legal landing page
 │   ├── privacy-policy.html       # Twilio A2P compliance
 │   └── terms.html                # Terms of Service
+├── openspec/
+│   ├── specs/                    # Living specification documents
+│   └── changes/                  # Feature proposals + deltas
 ├── data/                         # SQLite database (gitignored)
 ├── storage/receipts/             # Receipt images (gitignored)
 ├── requirements.txt              # Python dependencies
@@ -366,20 +577,18 @@ All config centralized in `config/settings.py`, read from environment variables 
 
 ---
 
-## 10. What Is NOT Built Yet
+## 13. What Is NOT Built Yet
 
-These are documented in the master build plan but have **no code written**:
+These are documented in the roadmap (`CREWOS_ROADMAP.md`) but have **no code written**:
 
-- **Web Dashboard** — Home screen, review queue, search/filter, receipt image viewer
-- **QuickBooks CSV Export** — Button on dashboard to export filtered data
-- **Project Name Fuzzy Matching** — Logic exists in spec, not wired into receipt flow
+- **GitHub Actions CI/CD** — Workflow file exists, needs SSH secrets configured and merge to main
 - **Duplicate Detection** — No implementation yet
-- **Auto-Categorization** — Category table seeded but items not auto-tagged
-- **Cost Intelligence** — Unit cost tracking, anomaly detection, vendor comparison
-- **Price Comparison** — Google Shopping / Amazon search for line items
-- **Module 2: Inventory Tracker** — Shop supplies, recurring orders, tool inventory
-- **Module 3: Project Management** — Job costing, crew assignment, scheduling
+- **Auto-Categorization** — Category table seeded but items not auto-tagged on receipt submission
+- **Cost Intelligence** — Unit cost tracking, anomaly detection, vendor comparison (Phase 3)
+- **Price Comparison** — Google Shopping / Amazon search for line items (Phase 3)
+- **Module 2: Inventory Tracker** — Shop supplies, recurring orders, tool inventory (Phase 4)
+- **Module 3: Project Management** — Job costing, crew assignment, scheduling (Phase 5)
 
 ---
 
-*Baseline spec generated February 2026 | CrewLedger v1.0 | Phase 1 complete*
+*Baseline spec updated February 2026 | CrewLedger v2.0 | Phase 1 + Phase 2B deployed*
