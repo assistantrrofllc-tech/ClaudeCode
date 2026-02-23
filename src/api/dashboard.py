@@ -1299,7 +1299,7 @@ def _query_receipts(db, args) -> list:
     if period == "today":
         conditions.append(f"{date_col} >= date('now')")
     elif period == "week":
-        conditions.append(f"{date_col} >= date('now', 'weekday 1', '-7 days')")
+        conditions.append(f"{date_col} >= date('now', '-' || ((strftime('%w', 'now') + 6) % 7) || ' days')")
     elif period == "month":
         conditions.append(f"{date_col} >= date('now', 'start of month')")
     elif period == "ytd":
