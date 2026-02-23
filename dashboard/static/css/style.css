@@ -468,6 +468,24 @@ button { cursor: pointer; font-family: inherit; }
 .cell-actions { white-space: nowrap; }
 .cell-amount { font-weight: 700; text-align: right; white-space: nowrap; }
 
+/* ── Row Action Buttons (Ledger) ──────────────────────── */
+.row-action-btn {
+    background: none;
+    border: none;
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.row-action-btn:hover { background: #f3f4f6; }
+.row-action-btn--edit:hover { color: #2563eb; }
+.row-action-btn--delete:hover { color: #dc2626; }
+
 /* ── Filter Bar (Ledger) ─────────────────────────────── */
 .filter-bar {
     margin-bottom: 16px;

@@ -4,6 +4,7 @@
 
 var _currentReceiptId = null;
 var _currentReceiptData = null;
+var _autoEditOnLoad = false;
 
 function openReceiptModal(receiptId) {
     var modal = document.getElementById('receipt-modal');
@@ -72,6 +73,12 @@ function openReceiptModal(receiptId) {
             }
 
             details.innerHTML = html;
+
+            // Auto-open edit form if requested via quick edit
+            if (_autoEditOnLoad) {
+                _autoEditOnLoad = false;
+                setTimeout(function() { toggleEditForm(receiptId); }, 50);
+            }
 
             // Footer with edit/history/delete buttons
             if (footer) {

@@ -97,6 +97,60 @@ def api_receipts():
         db.close()
 
 
+@dashboard_bp.route("/api/receipts", methods=["POST"])
+def api_create_receipt():
+    """Manually create a receipt (management entry). Saved as confirmed."""
+    data = request.get_json(silent=True) or {}
+
+    employee_id = data.get("employee_id")
+    vendor_name = data.get("vendor_name", "").strip()
+    total = data.get("total")
+
+    if not employee_id:
+        return jsonify({"error": "Employee is required"}), 400
+    if not vendor_name:
+        return jsonify({"error": "Vendor name is required"}), 400
+    if not total or float(total) <= 0:
+        return jsonify({"error": "A valid total is required"}), 400
+
+    db = get_db()
+    try:
+        emp = db.execute("SELECT id FROM employees WHERE id = ?", (employee_id,)).fetchone()
+        if not emp:
+            return jsonify({"error": "Employee not found"}), 404
+
+        project_id = data.get("project_id")
+        if project_id:
+            proj = db.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
+            if not proj:
+                return jsonify({"error": "Project not found"}), 404
+
+        cursor = db.execute(
+            """INSERT INTO receipts
+               (employee_id, project_id, vendor_name, purchase_date, subtotal, tax, total,
+                payment_method, notes, status, confirmed_at, is_missed_receipt)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', datetime('now'), 1)""",
+            (
+                employee_id,
+                project_id,
+                vendor_name,
+                data.get("purchase_date"),
+                data.get("subtotal") or 0,
+                data.get("tax") or 0,
+                float(total),
+                data.get("payment_method", ""),
+                data.get("notes", ""),
+            ),
+        )
+        receipt_id = cursor.lastrowid
+        db.commit()
+
+        log.info("Manual receipt #%d created by management (vendor=%s, total=%s)", receipt_id, vendor_name, total)
+        return jsonify({"status": "created", "id": receipt_id}), 201
+    finally:
+        db.close()
+
+
 @dashboard_bp.route("/api/receipts/export")
 def api_receipts_export():
     """Export filtered receipts as QuickBooks CSV, Google Sheets CSV, or Excel.
@@ -400,10 +454,12 @@ def ledger_page():
     try:
         employees = db.execute("SELECT id, first_name FROM employees ORDER BY first_name").fetchall()
         projects = db.execute("SELECT id, name FROM projects WHERE status = 'active' ORDER BY name").fetchall()
+        categories = db.execute("SELECT id, name FROM categories ORDER BY name").fetchall()
         return render_template(
             "ledger.html",
             employees=[dict(e) for e in employees],
             projects=[dict(p) for p in projects],
+            categories=[dict(c) for c in categories],
         )
     finally:
         db.close()
