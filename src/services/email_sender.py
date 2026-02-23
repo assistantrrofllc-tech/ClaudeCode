@@ -2,7 +2,7 @@
 Weekly email report — rendering and sending.
 
 Builds an HTML email from the report data and sends it via SMTP.
-Kim opens her email Monday morning — everything is already organized.
+The accountant opens their email Monday morning — everything is already organized.
 """
 
 import logging

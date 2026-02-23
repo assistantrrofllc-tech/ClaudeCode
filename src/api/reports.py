@@ -3,7 +3,7 @@ Report API endpoints.
 
 Provides endpoints to trigger and preview weekly reports.
 The /reports/weekly/send endpoint can be hit by a cron job
-every Monday morning to deliver Kim's report automatically.
+every Monday morning to deliver the report automatically.
 """
 
 import logging

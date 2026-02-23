@@ -340,6 +340,22 @@ def api_update_project(project_id):
         db.close()
 
 
+@dashboard_bp.route("/api/projects/<int:project_id>", methods=["DELETE"])
+def api_delete_project(project_id):
+    """Delete a project. Receipts linked to it are kept but unlinked."""
+    db = get_db()
+    try:
+        row = db.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Project not found"}), 404
+        db.execute("UPDATE receipts SET project_id = NULL WHERE project_id = ?", (project_id,))
+        db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        db.commit()
+        return jsonify({"status": "deleted"})
+    finally:
+        db.close()
+
+
 @dashboard_bp.route("/api/projects/<int:project_id>", methods=["GET"])
 def api_project_detail(project_id):
     """Get a single project."""
@@ -379,7 +395,7 @@ def api_unknown_contacts():
 
 @dashboard_bp.route("/ledger")
 def ledger_page():
-    """Banking-style transaction ledger — Kim's primary view."""
+    """Banking-style transaction ledger."""
     db = get_db()
     try:
         employees = db.execute("SELECT id, first_name FROM employees ORDER BY first_name").fetchall()

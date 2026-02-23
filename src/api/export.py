@@ -2,7 +2,7 @@
 QuickBooks CSV export endpoint.
 
 Exports receipt data as a QuickBooks-ready CSV file.
-Kim can use this immediately — no dashboard required.
+The accountant can use this immediately — no dashboard required.
 
 GET /export/quickbooks
     Optional query params:

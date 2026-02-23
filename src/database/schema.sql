@@ -176,7 +176,7 @@ CREATE INDEX IF NOT EXISTS idx_unknown_created ON unknown_contacts(created_at);
 
 -- ============================================================
 -- EMAIL SETTINGS
--- Kim controls her own report schedule and destination.
+-- The accountant controls their own report schedule and destination.
 -- Key-value store for simplicity — one row per setting.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS email_settings (

@@ -2,7 +2,7 @@
 Weekly report data aggregation.
 
 Queries the database for a date range and organizes receipts
-per-employee for Kim's weekly email report.
+per-employee for the weekly email report.
 
 Spec: "Framed as 'Here is Omar's week' — not one giant data dump.
 Each section: daily spend summary at top, full transaction breakdown below.

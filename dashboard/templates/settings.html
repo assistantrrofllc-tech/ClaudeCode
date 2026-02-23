@@ -96,11 +96,12 @@
                     <th>Status</th>
                     <th>Receipts</th>
                     <th>Spend</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
                 {% for p in projects %}
-                <tr>
+                <tr id="proj-row-{{ p.id }}">
                     <td><strong>{{ p.name }}</strong></td>
                     <td class="text-muted">{{ p.project_code or '—' }}</td>
                     <td class="text-muted">{% if p.city %}{{ p.city }}{% if p.state %}, {{ p.state }}{% endif %}{% else %}—{% endif %}</td>
@@ -115,10 +116,13 @@
                     </td>
                     <td>{{ p.receipt_count or 0 }}</td>
                     <td>${{ "%.2f"|format(p.total_spend or 0) }}</td>
+                    <td>
+                        <button class="btn btn--small btn--danger" onclick="deleteProject({{ p.id }}, '{{ p.name }}')">Remove</button>
+                    </td>
                 </tr>
                 {% endfor %}
                 {% if not projects %}
-                <tr><td colspan="6" class="text-muted" style="text-align:center;">No projects yet</td></tr>
+                <tr><td colspan="7" class="text-muted" style="text-align:center;">No projects yet</td></tr>
                 {% endif %}
             </tbody>
         </table>
@@ -145,7 +149,7 @@
             <div class="form-row" style="grid-template-columns: 1fr;">
                 <div class="form-group">
                     <label>Recipient Email *</label>
-                    <input type="email" id="set-email" value="{{ settings.get('recipient_email', '') }}" placeholder="kim@company.com" required>
+                    <input type="email" id="set-email" value="{{ settings.get('recipient_email', '') }}" placeholder="accountant@company.com" required>
                 </div>
             </div>
 
@@ -319,6 +323,20 @@ function addProject(e) {
             var errEl = document.getElementById('proj-error');
             errEl.textContent = r.data.error || 'Failed to add project';
             errEl.style.display = 'block';
+        }
+    });
+}
+
+function deleteProject(id, name) {
+    if (!confirm('Remove project "' + name + '"? This cannot be undone.')) return;
+    fetch('/api/projects/' + id, { method: 'DELETE' })
+    .then(function(resp) { return resp.json(); })
+    .then(function(d) {
+        if (d.status === 'deleted') {
+            var row = document.getElementById('proj-row-' + id);
+            if (row) row.remove();
+        } else {
+            alert(d.error || 'Failed to remove project');
         }
     });
 }
