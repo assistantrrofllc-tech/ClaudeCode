@@ -959,6 +959,219 @@ def test_settings_page_shows_projects():
     assert b"Employee Management" in resp.data
 
 
+# ── Category Management ──────────────────────────────────
+
+
+def test_categories_seeded_on_fresh_db():
+    """All 8 default categories are seeded when the DB is created."""
+    setup_test_db()
+    db = get_db(TEST_DB)
+    cats = db.execute("SELECT name FROM categories ORDER BY sort_order").fetchall()
+    db.close()
+    names = [c["name"] for c in cats]
+    assert len(names) == 8
+    assert "Materials" in names
+    assert "Tools & Equipment" in names
+    assert "Fuel" in names
+    assert "Food & Drinks" in names
+    assert "Safety Gear" in names
+    assert "Lodging" in names
+    assert "Office & Admin" in names
+    assert "Other" in names
+
+
+def test_api_categories_list():
+    """API returns all categories with receipt counts."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/api/categories")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data) == 8
+    assert all("receipt_count" in c for c in data)
+    assert all("is_active" in c for c in data)
+
+
+def test_api_categories_active_only():
+    """API filters to active categories when ?active=1."""
+    setup_test_db()
+    # Deactivate one category
+    db = get_db(TEST_DB)
+    db.execute("UPDATE categories SET is_active = 0 WHERE name = 'Lodging'")
+    db.commit()
+    db.close()
+
+    client = get_test_client()
+    resp = client.get("/api/categories?active=1")
+    data = resp.get_json()
+    assert len(data) == 7
+    names = [c["name"] for c in data]
+    assert "Lodging" not in names
+
+
+def test_api_add_category():
+    """API adds a new category."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/categories", json={"name": "Permits"})
+    assert resp.status_code == 201
+    data = resp.get_json()
+    assert data["status"] == "created"
+    assert data["id"] is not None
+
+    # Verify it appears in the list
+    resp2 = client.get("/api/categories")
+    names = [c["name"] for c in resp2.get_json()]
+    assert "Permits" in names
+
+
+def test_api_add_category_duplicate():
+    """API rejects duplicate category name (case-insensitive)."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/categories", json={"name": "materials"})
+    assert resp.status_code == 409
+
+
+def test_api_add_category_empty_name():
+    """API rejects empty category name."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.post("/api/categories", json={"name": ""})
+    assert resp.status_code == 400
+
+
+def test_api_rename_category():
+    """API renames a category and returns receipt count."""
+    setup_test_db()
+    client = get_test_client()
+
+    # Get the Materials category id
+    db = get_db(TEST_DB)
+    cat = db.execute("SELECT id FROM categories WHERE name = 'Materials'").fetchone()
+    cat_id = cat["id"]
+    db.close()
+
+    resp = client.put(f"/api/categories/{cat_id}", json={"name": "Building Materials"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "updated"
+
+    # Verify rename
+    resp2 = client.get("/api/categories")
+    names = [c["name"] for c in resp2.get_json()]
+    assert "Building Materials" in names
+    assert "Materials" not in names
+
+
+def test_api_rename_category_duplicate():
+    """API rejects rename to an existing category name."""
+    setup_test_db()
+    client = get_test_client()
+    db = get_db(TEST_DB)
+    cat = db.execute("SELECT id FROM categories WHERE name = 'Fuel'").fetchone()
+    cat_id = cat["id"]
+    db.close()
+
+    resp = client.put(f"/api/categories/{cat_id}", json={"name": "Materials"})
+    assert resp.status_code == 409
+
+
+def test_api_deactivate_category():
+    """API deactivates a category — hidden from active list but receipts keep it."""
+    setup_test_db()
+    client = get_test_client()
+
+    # Assign a category to a receipt first
+    db = get_db(TEST_DB)
+    cat = db.execute("SELECT id FROM categories WHERE name = 'Fuel'").fetchone()
+    cat_id = cat["id"]
+    db.execute("UPDATE receipts SET category_id = ? WHERE id = 1", (cat_id,))
+    db.commit()
+    db.close()
+
+    # Deactivate
+    resp = client.post(f"/api/categories/{cat_id}/deactivate")
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "deactivated"
+
+    # Should be gone from active list
+    resp2 = client.get("/api/categories?active=1")
+    active_names = [c["name"] for c in resp2.get_json()]
+    assert "Fuel" not in active_names
+
+    # But receipt still has its category_id
+    db = get_db(TEST_DB)
+    receipt = db.execute("SELECT category_id FROM receipts WHERE id = 1").fetchone()
+    assert receipt["category_id"] == cat_id
+    db.close()
+
+
+def test_api_activate_category():
+    """API reactivates a deactivated category — reappears in dropdown."""
+    setup_test_db()
+    client = get_test_client()
+
+    db = get_db(TEST_DB)
+    cat = db.execute("SELECT id FROM categories WHERE name = 'Lodging'").fetchone()
+    cat_id = cat["id"]
+    db.execute("UPDATE categories SET is_active = 0 WHERE id = ?", (cat_id,))
+    db.commit()
+    db.close()
+
+    # Verify it's inactive
+    resp = client.get("/api/categories?active=1")
+    assert "Lodging" not in [c["name"] for c in resp.get_json()]
+
+    # Reactivate
+    resp2 = client.post(f"/api/categories/{cat_id}/activate")
+    assert resp2.status_code == 200
+    assert resp2.get_json()["status"] == "activated"
+
+    # Now it should be back
+    resp3 = client.get("/api/categories?active=1")
+    assert "Lodging" in [c["name"] for c in resp3.get_json()]
+
+
+def test_api_category_not_found():
+    """API returns 404 for non-existent category operations."""
+    setup_test_db()
+    client = get_test_client()
+    assert client.put("/api/categories/999", json={"name": "X"}).status_code == 404
+    assert client.post("/api/categories/999/deactivate").status_code == 404
+    assert client.post("/api/categories/999/activate").status_code == 404
+
+
+def test_receipt_edit_with_category():
+    """Editing a receipt can set category_id."""
+    setup_test_db()
+    client = get_test_client()
+
+    db = get_db(TEST_DB)
+    cat = db.execute("SELECT id FROM categories WHERE name = 'Fuel'").fetchone()
+    cat_id = cat["id"]
+    db.close()
+
+    resp = client.post("/api/receipts/1/edit", json={"category_id": cat_id})
+    assert resp.status_code == 200
+    assert "category_id" in resp.get_json()["fields_changed"]
+
+    db = get_db(TEST_DB)
+    receipt = db.execute("SELECT category_id FROM receipts WHERE id = 1").fetchone()
+    assert receipt["category_id"] == cat_id
+    db.close()
+
+
+def test_settings_page_shows_categories():
+    """Settings page renders with Categories section."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert b"Categories" in resp.data
+    assert b"Add Category" in resp.data
+
+
 if __name__ == "__main__":
     print("Testing dashboard...\n")
     test_dashboard_home()

@@ -25,6 +25,31 @@
     </a>
 </div>
 
+<!-- Category Management -->
+<section class="settings-section">
+    <h2>Categories</h2>
+    <div class="card" style="max-width: 640px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <span style="font-size:13px; color:#6b7280;">Manage receipt categories</span>
+            <button class="btn btn--small btn--primary" onclick="showAddCategory()">Add Category</button>
+        </div>
+        <div id="add-cat-row" style="display:none; margin-bottom:12px;">
+            <div style="display:flex; gap:8px; align-items:center;">
+                <input type="text" id="new-cat-name" placeholder="Category name" style="flex:1; padding:6px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                <button class="btn btn--small btn--primary" onclick="addCategory()">Save</button>
+                <button class="btn btn--small btn--secondary" onclick="hideAddCategory()">Cancel</button>
+            </div>
+            <div id="add-cat-msg" style="margin-top:4px; font-size:12px;"></div>
+        </div>
+        <table class="line-items-table" id="categories-table">
+            <thead><tr><th>Name</th><th>Status</th><th style="text-align:right;">Actions</th></tr></thead>
+            <tbody id="categories-body">
+                <tr><td colspan="3" class="text-muted">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
 <!-- Email Report Settings -->
 <section class="settings-section">
     <h2>Email Reports</h2>
@@ -184,5 +209,126 @@ function sendNow() {
 // Init visibility
 updateFrequencyOptions();
 toggleFilter();
+
+// ── Category Management ────────────────────
+function loadCategories() {
+    fetch('/api/categories')
+        .then(function(r) { return r.json(); })
+        .then(function(cats) {
+            var tbody = document.getElementById('categories-body');
+            if (!cats.length) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-muted">No categories found.</td></tr>';
+                return;
+            }
+            var html = '';
+            for (var i = 0; i < cats.length; i++) {
+                var c = cats[i];
+                var statusBadge = c.is_active
+                    ? '<span class="badge badge--confirmed">Active</span>'
+                    : '<span class="badge badge--flagged">Inactive</span>';
+                var actions = '';
+                actions += '<button class="btn btn--small btn--secondary" onclick="renameCategory(' + c.id + ', \'' + escapeAttr(c.name) + '\', ' + (c.receipt_count || 0) + ')" style="margin-right:4px;">Rename</button>';
+                if (c.is_active) {
+                    actions += '<button class="btn btn--small btn--danger" onclick="deactivateCategory(' + c.id + ')">Deactivate</button>';
+                } else {
+                    actions += '<button class="btn btn--small btn--success" onclick="activateCategory(' + c.id + ')">Activate</button>';
+                }
+                html += '<tr><td>' + escapeHtml(c.name) + '</td><td>' + statusBadge + '</td><td style="text-align:right;">' + actions + '</td></tr>';
+            }
+            tbody.innerHTML = html;
+        });
+}
+
+function showAddCategory() {
+    document.getElementById('add-cat-row').style.display = '';
+    document.getElementById('new-cat-name').focus();
+}
+
+function hideAddCategory() {
+    document.getElementById('add-cat-row').style.display = 'none';
+    document.getElementById('new-cat-name').value = '';
+    document.getElementById('add-cat-msg').innerHTML = '';
+}
+
+function addCategory() {
+    var name = document.getElementById('new-cat-name').value.trim();
+    var msg = document.getElementById('add-cat-msg');
+    if (!name) { msg.innerHTML = '<span style="color:#dc2626;">Name is required.</span>'; return; }
+    fetch('/api/categories', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name}),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.id) {
+            hideAddCategory();
+            loadCategories();
+            _cachedCategories = null; // bust cache for edit forms
+        } else {
+            msg.innerHTML = '<span style="color:#dc2626;">' + (d.error || 'Failed') + '</span>';
+        }
+    });
+}
+
+function renameCategory(id, currentName, receiptCount) {
+    var warning = '';
+    if (receiptCount > 0) {
+        warning = receiptCount + ' receipt' + (receiptCount !== 1 ? 's' : '') + ' use this category \u2014 renaming will update all of them.\n\n';
+    }
+    var newName = prompt(warning + 'Rename "' + currentName + '" to:', currentName);
+    if (!newName || newName.trim() === currentName) return;
+    fetch('/api/categories/' + id, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: newName.trim()}),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.status === 'updated') {
+            loadCategories();
+            _cachedCategories = null;
+        } else {
+            alert(d.error || 'Failed to rename');
+        }
+    });
+}
+
+function deactivateCategory(id) {
+    if (!confirm('Deactivate this category? It will disappear from dropdowns but historical receipts keep their label.')) return;
+    fetch('/api/categories/' + id + '/deactivate', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.status === 'deactivated') {
+                loadCategories();
+                _cachedCategories = null;
+            } else {
+                alert(d.error || 'Failed to deactivate');
+            }
+        });
+}
+
+function activateCategory(id) {
+    fetch('/api/categories/' + id + '/activate', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.status === 'activated') {
+                loadCategories();
+                _cachedCategories = null;
+            } else {
+                alert(d.error || 'Failed to activate');
+            }
+        });
+}
+
+// escapeHtml/escapeAttr may already be in app.js — define local fallbacks
+if (typeof escapeHtml === 'undefined') {
+    function escapeHtml(s) { if (!s) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+}
+if (typeof escapeAttr === 'undefined') {
+    function escapeAttr(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+}
+
+loadCategories();
 </script>
 {% endblock %}

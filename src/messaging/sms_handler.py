@@ -244,33 +244,65 @@ def _resolve_project_id(db, project_name: str):
     return None
 
 
-_CATEGORY_KEYWORDS = {
-    1: ["shingle", "underlayment", "flashing", "ridge cap", "drip edge", "osb", "roofing",
-        "tarp", "plywood", "lumber", "deck", "siding", "drywall", "insulation", "cement",
-        "concrete", "mortar", "stucco", "tile", "board"],
-    2: ["tool", "drill", "saw", "ladder", "grinder", "compressor", "nailer", "gun",
-        "sander", "level", "rental", "blade", "bit", "wrench", "hammer", "plier"],
-    3: ["nail", "screw", "bolt", "anchor", "bracket", "fastener", "hinge", "latch",
-        "nut", "washer", "rivet", "staple", "clip"],
-    4: ["hard hat", "helmet", "glove", "harness", "safety", "vest", "glasses", "ppe",
-        "respirator", "ear plug", "first aid", "mask", "goggles"],
-    5: ["fuel", "gas", "diesel", "propane", "unleaded", "petroleum", "oil change"],
-    6: ["office", "permit", "paper", "print", "pen", "marker", "binder", "folder",
-        "stamp", "envelope", "shipping"],
-    7: ["rag", "water", "tape", "caulk", "adhesive", "silicone", "sealant", "glue",
-        "paint", "primer", "brush", "roller", "thinner", "cleaner", "solvent",
-        "gatorade", "drink", "snack", "ice", "food", "cup", "towel", "bag"],
-}
+def _resolve_category_id(db, category_name: str):
+    """Resolve a category name (from OCR) to a category_id. Falls back to 'Other'."""
+    if not category_name:
+        return None
+    row = db.execute(
+        "SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND is_active = 1",
+        (category_name.strip(),),
+    ).fetchone()
+    if row:
+        return row["id"]
+    # Fuzzy fallback — check if the name is close to any category
+    from thefuzz import fuzz
+    cats = db.execute("SELECT id, name FROM categories WHERE is_active = 1").fetchall()
+    best_id, best_score = None, 0
+    for c in cats:
+        score = fuzz.ratio(category_name.strip().lower(), c["name"].lower())
+        if score > best_score:
+            best_score = score
+            best_id = c["id"]
+    if best_score >= 60:
+        return best_id
+    # Default to "Other"
+    other = db.execute("SELECT id FROM categories WHERE name = 'Other'").fetchone()
+    return other["id"] if other else None
 
 
-def _categorize_item(db, item_name: str):
-    """Match an item name to a category using keyword lookup."""
-    lower = item_name.lower()
-    for cat_id, keywords in _CATEGORY_KEYWORDS.items():
-        for kw in keywords:
-            if kw in lower:
-                return cat_id
-    return 6  # Default to Office & Misc
+def _categorize_by_vendor(db, vendor_name: str):
+    """Fallback: guess category from vendor name when OCR doesn't suggest one."""
+    if not vendor_name:
+        return None
+    lower = vendor_name.lower()
+    # Vendor-to-category mapping per spec
+    fuel_vendors = ["gas", "fuel", "shell", "chevron", "bp", "exxon", "mobil", "circle k",
+                    "wawa", "racetrac", "speedway", "sunoco", "murphy", "qt", "quiktrip",
+                    "lake wales", "citgo", "valero", "marathon"]
+    material_vendors = ["home depot", "lowe", "menard", "ace hardware", "84 lumber",
+                        "abc supply", "beacon", "srs", "build"]
+    food_vendors = ["mcdonald", "burger", "subway", "wendy", "chick-fil", "taco bell",
+                    "pizza", "restaurant", "diner", "cafe", "publix", "walmart",
+                    "dollar general", "dollar tree", "convenience", "smoke shop"]
+    safety_vendors = ["safety", "grainger", "fastenal"]
+    lodging_vendors = ["hotel", "motel", "inn", "suites", "lodge", "airbnb", "extended stay"]
+
+    for kw in fuel_vendors:
+        if kw in lower:
+            return db.execute("SELECT id FROM categories WHERE name = 'Fuel'").fetchone()["id"]
+    for kw in material_vendors:
+        if kw in lower:
+            return db.execute("SELECT id FROM categories WHERE name = 'Materials'").fetchone()["id"]
+    for kw in food_vendors:
+        if kw in lower:
+            return db.execute("SELECT id FROM categories WHERE name = 'Food & Drinks'").fetchone()["id"]
+    for kw in safety_vendors:
+        if kw in lower:
+            return db.execute("SELECT id FROM categories WHERE name = 'Safety Gear'").fetchone()["id"]
+    for kw in lodging_vendors:
+        if kw in lower:
+            return db.execute("SELECT id FROM categories WHERE name = 'Lodging'").fetchone()["id"]
+    return None
 
 
 # ── Receipt submission (photo received) ─────────────────────
@@ -321,12 +353,17 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
     if project_name:
         project_id = _resolve_project_id(db, project_name)
 
+    # Resolve category: OCR suggestion first, then vendor-based fallback
+    category_id = _resolve_category_id(db, ocr_data.get("category"))
+    if not category_id:
+        category_id = _categorize_by_vendor(db, ocr_data.get("vendor_name"))
+
     cursor = db.execute(
         """INSERT INTO receipts
            (employee_id, image_path, vendor_name, vendor_city, vendor_state,
             purchase_date, subtotal, tax, total, payment_method,
-            project_id, matched_project_name, raw_ocr_json, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+            project_id, matched_project_name, category_id, raw_ocr_json, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
         (
             employee_id,
             image_path,
@@ -340,25 +377,23 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
             ocr_data.get("payment_method"),
             project_id,
             project_name,
+            category_id,
             json.dumps(ocr_data),
         ),
     )
     receipt_id = cursor.lastrowid
 
-    # Save line items with auto-categorization
+    # Save line items
     for item in ocr_data.get("line_items", []):
-        item_name = item.get("item_name", "Unknown item")
-        category_id = _categorize_item(db, item_name)
         db.execute(
-            """INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price)
+               VALUES (?, ?, ?, ?, ?)""",
             (
                 receipt_id,
-                item_name,
+                item.get("item_name", "Unknown item"),
                 item.get("quantity", 1),
                 item.get("unit_price"),
                 item.get("extended_price"),
-                category_id,
             ),
         )
 

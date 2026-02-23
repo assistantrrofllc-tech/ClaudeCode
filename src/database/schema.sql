@@ -57,18 +57,21 @@ CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE TABLE IF NOT EXISTS categories (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT    UNIQUE NOT NULL,
-    description     TEXT
+    description     TEXT,
+    is_active       INTEGER DEFAULT 1,
+    sort_order      INTEGER DEFAULT 0
 );
 
--- Seed default categories from the spec
-INSERT OR IGNORE INTO categories (name, description) VALUES
-    ('Roofing Materials',    'Shingles, underlayment, flashing, ridge caps, drip edge'),
-    ('Tools & Equipment',    'Power tools, hand tools, ladders, equipment rentals'),
-    ('Fasteners & Hardware', 'Nails, screws, bolts, anchors, brackets'),
-    ('Safety & PPE',         'Hard hats, gloves, harnesses, safety glasses, vests'),
-    ('Fuel & Propane',       'Gas, diesel, propane tanks, propane exchanges'),
-    ('Office & Misc',        'Office supplies, permits, printing, miscellaneous'),
-    ('Consumables',          'Rags, water, tape, caulk, adhesives, disposables');
+-- Seed default categories (8 per spec, sort_order = dropdown order)
+INSERT OR IGNORE INTO categories (name, description, sort_order) VALUES
+    ('Materials',        'Lumber, concrete, roofing materials, fasteners, adhesives', 1),
+    ('Fuel',             'Gas stations, diesel, fuel for equipment',                  2),
+    ('Food & Drinks',    'Crew meals, drinks, snacks on the job',                    3),
+    ('Tools & Equipment','Hand tools, power tools, equipment purchases',             4),
+    ('Safety Gear',      'Vests, helmets, harnesses, gloves, eyewear',               5),
+    ('Office & Admin',   'Printing, office supplies, postage, permits',              6),
+    ('Lodging',          'Hotels, extended stay for out of town jobs',                7),
+    ('Other',            'Anything that does not fit the above',                      8);
 
 -- ============================================================
 -- RECEIPTS
@@ -96,12 +99,14 @@ CREATE TABLE IF NOT EXISTS receipts (
     is_missed_receipt     INTEGER DEFAULT 0,
     matched_project_name  TEXT,
     fuzzy_match_score     REAL,
+    category_id           INTEGER,
     notes                 TEXT,
     raw_ocr_json          TEXT,
     created_at            TEXT    DEFAULT (datetime('now')),
     confirmed_at          TEXT,
     FOREIGN KEY (employee_id) REFERENCES employees(id),
-    FOREIGN KEY (project_id)  REFERENCES projects(id)
+    FOREIGN KEY (project_id)  REFERENCES projects(id),
+    FOREIGN KEY (category_id) REFERENCES categories(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_receipts_employee    ON receipts(employee_id);

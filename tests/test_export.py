@@ -45,9 +45,9 @@ def setup_test_db():
     db.execute("INSERT INTO projects (id, name) VALUES (1, 'Sparrow')")
     db.execute("INSERT INTO projects (id, name) VALUES (2, 'Hawk')")
 
-    # Categories (already seeded by schema, but grab IDs)
-    # Schema seeds: Roofing Materials(1), Tools & Equipment(2), Fasteners & Hardware(3),
-    #               Safety & PPE(4), Fuel & Propane(5), Office & Misc(6), Consumables(7)
+    # Categories (seeded by schema, IDs by insertion order):
+    # 1=Materials, 2=Fuel, 3=Food & Drinks, 4=Tools & Equipment,
+    # 5=Safety Gear, 6=Office & Admin, 7=Lodging, 8=Other
 
     # Receipt 1: Omar, confirmed, full data, Project Sparrow
     db.execute("""INSERT INTO receipts
@@ -99,18 +99,18 @@ def setup_test_db():
         VALUES (6, 1, 'Walmart', '2026-02-20',
                 15.00, 1.05, 16.05, 'confirmed', '2026-02-20 08:00:00')""")
 
-    # Line items for receipt #1 (Ace)
-    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (1, 'Utility Lighter', 1, 7.59, 7.59, 5)")
-    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (1, 'Propane Exchange', 1, 27.99, 27.99, 5)")
-    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (1, '20lb Propane Cylinder', 1, 59.99, 59.99, 5)")
+    # Line items for receipt #1 (Ace) — Fuel (id=2)
+    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (1, 'Utility Lighter', 1, 7.59, 7.59, 2)")
+    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (1, 'Propane Exchange', 1, 27.99, 27.99, 2)")
+    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (1, '20lb Propane Cylinder', 1, 59.99, 59.99, 2)")
 
-    # Line items for receipt #2 (Home Depot)
-    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (2, 'Roofing Nails 1lb', 2, 8.99, 17.98, 3)")
-    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (2, 'Caulk Gun', 1, 12.49, 12.49, 2)")
+    # Line items for receipt #2 (Home Depot) — Materials (id=1) and Tools & Equipment (id=4)
+    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (2, 'Roofing Nails 1lb', 2, 8.99, 17.98, 1)")
+    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (2, 'Caulk Gun', 1, 12.49, 12.49, 4)")
 
-    # Line items for receipt #4 (Lowe's)
-    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (4, 'Safety Harness', 1, 45.99, 45.99, 4)")
-    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (4, 'Hard Hat', 1, 21.90, 21.90, 4)")
+    # Line items for receipt #4 (Lowe's) — Safety Gear (id=5)
+    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (4, 'Safety Harness', 1, 45.99, 45.99, 5)")
+    db.execute("INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price, category_id) VALUES (4, 'Hard Hat', 1, 21.90, 21.90, 5)")
 
     # Receipt #5 has no line items (pending, not yet processed)
 
@@ -245,11 +245,11 @@ def test_export_category_account():
     resp = client.get("/export/quickbooks?week_start=2026-02-09&week_end=2026-02-15")
     rows = parse_csv_response(resp)
 
-    # Receipt 1: all items are Fuel & Propane (category_id=5)
-    assert rows[0]["Account"] == "Fuel & Propane"
+    # Receipt 1: all items are Fuel (category_id=2)
+    assert rows[0]["Account"] == "Fuel"
 
-    # Receipt 2: first item is Fasteners & Hardware (category_id=3)
-    assert rows[1]["Account"] == "Fasteners & Hardware"
+    # Receipt 2: first item is Materials (category_id=1)
+    assert rows[1]["Account"] == "Materials"
     print("  PASS: Account column maps to category")
 
 
@@ -284,7 +284,7 @@ def test_export_filter_by_category():
     """category filter returns only receipts with matching line item categories."""
     setup_test_db()
     client = get_test_client()
-    resp = client.get("/export/quickbooks?week_start=2026-02-09&week_end=2026-02-15&category=Safety+%26+PPE")
+    resp = client.get("/export/quickbooks?week_start=2026-02-09&week_end=2026-02-15&category=Safety+Gear")
     rows = parse_csv_response(resp)
 
     assert len(rows) == 1

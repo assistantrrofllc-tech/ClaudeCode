@@ -159,6 +159,44 @@ def test_parse_return_receipt():
     print("  PASS: negative amounts for returns")
 
 
+def test_parse_preserves_category():
+    """OCR response with category field is preserved through parsing."""
+    raw = json.dumps({
+        "vendor_name": "Shell Gas Station",
+        "total": 45.00,
+        "category": "Fuel",
+        "line_items": [
+            {"item_name": "Regular Unleaded", "quantity": 1, "unit_price": 45.00, "extended_price": 45.00},
+        ],
+    })
+    result = _parse_ocr_response(raw)
+    assert result is not None
+    assert result["category"] == "Fuel"
+    print("  PASS: category field preserved from OCR")
+
+
+def test_parse_category_common_vendors():
+    """OCR category suggestion maps correctly for common vendor types."""
+    test_cases = [
+        ("Shell", "Fuel"),
+        ("Home Depot", "Materials"),
+        ("McDonald's", "Food & Drinks"),
+        ("Hilton Hotel", "Lodging"),
+        ("Safety Supply Co", "Safety Gear"),
+    ]
+    for vendor, expected_cat in test_cases:
+        raw = json.dumps({
+            "vendor_name": vendor,
+            "total": 50.00,
+            "category": expected_cat,
+            "line_items": [],
+        })
+        result = _parse_ocr_response(raw)
+        assert result is not None
+        assert result["category"] == expected_cat
+    print("  PASS: category preserved for common vendor types")
+
+
 # ── format_confirmation_message tests ────────────────────────
 
 

@@ -33,6 +33,7 @@ Return ONLY a JSON object with this exact structure (no markdown, no explanation
   "tax": 0.00,
   "total": 0.00,
   "payment_method": "CASH or last 4 digits of card (e.g. VISA 1234)",
+  "category": "One of: Materials, Tools & Equipment, Fuel, Food & Drinks, Safety Gear, Lodging, Office & Admin, Other",
   "line_items": [
     {
       "item_name": "Item description as printed",
@@ -52,6 +53,7 @@ Rules:
 - If only a total price is shown for an item (no unit price), set both unit_price and extended_price to that amount
 - Parse the date as YYYY-MM-DD regardless of how it appears on the receipt
 - For payment method, look for CASH, CREDIT, DEBIT, VISA, MC, AMEX, or card last 4 digits
+- For category, pick the single best match based on vendor and items: Materials (lumber, concrete, roofing, fasteners), Tools & Equipment (tools, equipment), Fuel (gas station, diesel), Food & Drinks (meals, snacks, drinks), Safety Gear (PPE, vests, helmets), Lodging (hotel, motel), Office & Admin (office supplies, permits), Other (anything else)
 - Return ONLY valid JSON, no other text"""
 
 

@@ -125,14 +125,17 @@ def api_create_receipt():
             if not proj:
                 return jsonify({"error": "Project not found"}), 404
 
+        category_id = data.get("category_id") or None
+
         cursor = db.execute(
             """INSERT INTO receipts
-               (employee_id, project_id, vendor_name, purchase_date, subtotal, tax, total,
+               (employee_id, project_id, category_id, vendor_name, purchase_date, subtotal, tax, total,
                 payment_method, notes, status, confirmed_at, is_missed_receipt)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', datetime('now'), 1)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', datetime('now'), 1)""",
             (
                 employee_id,
                 project_id,
+                category_id,
                 vendor_name,
                 data.get("purchase_date"),
                 data.get("subtotal") or 0,
@@ -430,6 +433,116 @@ def api_project_detail(project_id):
         if not row:
             return jsonify({"error": "Project not found"}), 404
         return jsonify(dict(row))
+    finally:
+        db.close()
+
+
+# ── Categories ───────────────────────────────────────────
+
+
+@dashboard_bp.route("/api/categories", methods=["GET"])
+def api_categories():
+    """List all categories. Pass ?active=1 to get only active ones."""
+    db = get_db()
+    try:
+        active_only = request.args.get("active", "0")
+        if active_only == "1":
+            rows = db.execute("SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order, name").fetchall()
+        else:
+            rows = db.execute("SELECT * FROM categories ORDER BY sort_order, name").fetchall()
+        # Include receipt count for management UI
+        result = []
+        for r in rows:
+            d = dict(r)
+            count = db.execute(
+                "SELECT COUNT(*) as cnt FROM receipts WHERE category_id = ? AND status NOT IN ('deleted','duplicate')",
+                (r["id"],),
+            ).fetchone()
+            d["receipt_count"] = count["cnt"] if count else 0
+            result.append(d)
+        return jsonify(result)
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/categories", methods=["POST"])
+def api_add_category():
+    """Add a new category."""
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+
+    db = get_db()
+    try:
+        existing = db.execute("SELECT id FROM categories WHERE LOWER(name) = LOWER(?)", (name,)).fetchone()
+        if existing:
+            return jsonify({"error": "Category already exists"}), 409
+        max_order = db.execute("SELECT MAX(sort_order) as m FROM categories").fetchone()["m"] or 0
+        cursor = db.execute(
+            "INSERT INTO categories (name, description, sort_order) VALUES (?, ?, ?)",
+            (name, data.get("description", ""), max_order + 1),
+        )
+        db.commit()
+        return jsonify({"status": "created", "id": cursor.lastrowid, "name": name}), 201
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/categories/<int:cat_id>", methods=["PUT"])
+def api_update_category(cat_id):
+    """Rename or update a category."""
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    try:
+        cat = db.execute("SELECT * FROM categories WHERE id = ?", (cat_id,)).fetchone()
+        if not cat:
+            return jsonify({"error": "Category not found"}), 404
+
+        name = (data.get("name") or "").strip()
+        if name and name != cat["name"]:
+            dup = db.execute("SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND id != ?", (name, cat_id)).fetchone()
+            if dup:
+                return jsonify({"error": "A category with that name already exists"}), 409
+            # Count receipts using this category for the warning
+            count = db.execute(
+                "SELECT COUNT(*) as cnt FROM receipts WHERE category_id = ?", (cat_id,)
+            ).fetchone()["cnt"]
+            db.execute("UPDATE categories SET name = ? WHERE id = ?", (name, cat_id))
+            db.commit()
+            return jsonify({"status": "updated", "receipt_count": count})
+
+        return jsonify({"status": "no_change"})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/categories/<int:cat_id>/deactivate", methods=["POST"])
+def api_deactivate_category(cat_id):
+    """Deactivate a category — hidden from dropdowns, historical receipts keep it."""
+    db = get_db()
+    try:
+        cat = db.execute("SELECT * FROM categories WHERE id = ?", (cat_id,)).fetchone()
+        if not cat:
+            return jsonify({"error": "Category not found"}), 404
+        db.execute("UPDATE categories SET is_active = 0 WHERE id = ?", (cat_id,))
+        db.commit()
+        return jsonify({"status": "deactivated"})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/categories/<int:cat_id>/activate", methods=["POST"])
+def api_activate_category(cat_id):
+    """Reactivate a deactivated category."""
+    db = get_db()
+    try:
+        cat = db.execute("SELECT * FROM categories WHERE id = ?", (cat_id,)).fetchone()
+        if not cat:
+            return jsonify({"error": "Category not found"}), 404
+        db.execute("UPDATE categories SET is_active = 1 WHERE id = ?", (cat_id,))
+        db.commit()
+        return jsonify({"status": "activated"})
     finally:
         db.close()
 
@@ -801,7 +914,7 @@ def api_edit_receipt(receipt_id):
         allowed_fields = {
             "vendor_name", "vendor_city", "vendor_state", "purchase_date",
             "subtotal", "tax", "total", "payment_method", "notes",
-            "matched_project_name", "project_id", "status", "duplicate_of",
+            "matched_project_name", "project_id", "category_id", "status", "duplicate_of",
         }
         updates = {k: v for k, v in data.items() if k in allowed_fields}
         if not updates:
@@ -1358,14 +1471,11 @@ def _query_receipts(db, args) -> list:
     rows = db.execute(f"""
         SELECT r.*, e.first_name as employee_name, e.crew,
                p.name as project_name,
-               (SELECT c.name FROM line_items li
-                JOIN categories c ON li.category_id = c.id
-                WHERE li.receipt_id = r.id
-                GROUP BY c.id ORDER BY COUNT(*) DESC LIMIT 1
-               ) as category
+               cat.name as category
         FROM receipts r
         LEFT JOIN employees e ON r.employee_id = e.id
         LEFT JOIN projects p ON r.project_id = p.id
+        LEFT JOIN categories cat ON r.category_id = cat.id
         WHERE {where}
         ORDER BY {sort_col} {order}
         LIMIT 500
@@ -1378,10 +1488,12 @@ def _get_receipt_detail(db, receipt_id: int) -> dict | None:
     """Single receipt with line items."""
     row = db.execute("""
         SELECT r.*, e.first_name as employee_name, e.crew,
-               p.name as project_name
+               p.name as project_name,
+               cat.name as category
         FROM receipts r
         LEFT JOIN employees e ON r.employee_id = e.id
         LEFT JOIN projects p ON r.project_id = p.id
+        LEFT JOIN categories cat ON r.category_id = cat.id
         WHERE r.id = ?
     """, (receipt_id,)).fetchone()
 

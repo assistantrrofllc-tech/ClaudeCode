@@ -142,6 +142,28 @@ function saveNotes(receiptId) {
 
 // ── Receipt Editing ─────────────────────────────────────
 
+var _cachedCategories = null;
+
+function _loadCategories(callback) {
+    if (_cachedCategories) return callback(_cachedCategories);
+    fetch('/api/categories?active=1')
+        .then(function(r) { return r.json(); })
+        .then(function(cats) { _cachedCategories = cats; callback(cats); });
+}
+
+function _buildCategorySelect(id, selectedId) {
+    var html = '<select id="' + id + '"><option value="">— Select —</option>';
+    if (_cachedCategories) {
+        for (var i = 0; i < _cachedCategories.length; i++) {
+            var c = _cachedCategories[i];
+            var sel = (c.id == selectedId) ? ' selected' : '';
+            html += '<option value="' + c.id + '"' + sel + '>' + escapeHtml(c.name) + '</option>';
+        }
+    }
+    html += '</select>';
+    return html;
+}
+
 function toggleEditForm(receiptId) {
     var details = document.getElementById('modal-receipt-details');
     var data = _currentReceiptData;
@@ -153,36 +175,40 @@ function toggleEditForm(receiptId) {
         return;
     }
 
-    var form = document.createElement('div');
-    form.id = 'receipt-edit-form';
-    form.className = 'edit-form';
-    form.innerHTML = '<h4>Edit Receipt</h4>'
-        + '<div class="form-row">'
-        + '<div class="form-group"><label>Vendor</label><input type="text" id="edit-vendor" value="' + escapeAttr(data.vendor_name || '') + '"></div>'
-        + '<div class="form-group"><label>Date</label><input type="date" id="edit-date" value="' + (data.purchase_date || '') + '"></div>'
-        + '</div>'
-        + '<div class="form-row">'
-        + '<div class="form-group"><label>Subtotal</label><input type="number" step="0.01" id="edit-subtotal" value="' + (data.subtotal || '') + '"></div>'
-        + '<div class="form-group"><label>Tax</label><input type="number" step="0.01" id="edit-tax" value="' + (data.tax || '') + '"></div>'
-        + '<div class="form-group"><label>Total</label><input type="number" step="0.01" id="edit-total" value="' + (data.total || '') + '"></div>'
-        + '</div>'
-        + '<div class="form-row">'
-        + '<div class="form-group"><label>Payment Method</label><input type="text" id="edit-payment" value="' + escapeAttr(data.payment_method || '') + '"></div>'
-        + '<div class="form-group"><label>Project</label><input type="text" id="edit-project" value="' + escapeAttr(data.project_name || data.matched_project_name || '') + '"></div>'
-        + '</div>'
-        + '<div style="margin-top:8px;">'
-        + '<button class="btn btn--small btn--primary" onclick="saveReceiptEdit(' + receiptId + ')">Save Changes</button>'
-        + ' <button class="btn btn--small btn--secondary" onclick="document.getElementById(\'receipt-edit-form\').remove()">Cancel</button>'
-        + ' <span id="edit-msg" style="margin-left:8px;font-size:12px;"></span>'
-        + '</div>';
+    _loadCategories(function() {
+        var form = document.createElement('div');
+        form.id = 'receipt-edit-form';
+        form.className = 'edit-form';
+        form.innerHTML = '<h4>Edit Receipt</h4>'
+            + '<div class="form-row">'
+            + '<div class="form-group"><label>Vendor</label><input type="text" id="edit-vendor" value="' + escapeAttr(data.vendor_name || '') + '"></div>'
+            + '<div class="form-group"><label>Date</label><input type="date" id="edit-date" value="' + (data.purchase_date || '') + '"></div>'
+            + '</div>'
+            + '<div class="form-row">'
+            + '<div class="form-group"><label>Subtotal</label><input type="number" step="0.01" id="edit-subtotal" value="' + (data.subtotal || '') + '"></div>'
+            + '<div class="form-group"><label>Tax</label><input type="number" step="0.01" id="edit-tax" value="' + (data.tax || '') + '"></div>'
+            + '<div class="form-group"><label>Total</label><input type="number" step="0.01" id="edit-total" value="' + (data.total || '') + '"></div>'
+            + '</div>'
+            + '<div class="form-row">'
+            + '<div class="form-group"><label>Payment Method</label><input type="text" id="edit-payment" value="' + escapeAttr(data.payment_method || '') + '"></div>'
+            + '<div class="form-group"><label>Project</label><input type="text" id="edit-project" value="' + escapeAttr(data.project_name || data.matched_project_name || '') + '"></div>'
+            + '<div class="form-group"><label>Category</label>' + _buildCategorySelect('edit-category', data.category_id) + '</div>'
+            + '</div>'
+            + '<div style="margin-top:8px;">'
+            + '<button class="btn btn--small btn--primary" onclick="saveReceiptEdit(' + receiptId + ')">Save Changes</button>'
+            + ' <button class="btn btn--small btn--secondary" onclick="document.getElementById(\'receipt-edit-form\').remove()">Cancel</button>'
+            + ' <span id="edit-msg" style="margin-left:8px;font-size:12px;"></span>'
+            + '</div>';
 
-    details.appendChild(form);
+        details.appendChild(form);
+    });
 }
 
 function saveReceiptEdit(receiptId) {
     var msg = document.getElementById('edit-msg');
     msg.innerHTML = '<span style="color:#6b7280;">Saving...</span>';
 
+    var catEl = document.getElementById('edit-category');
     var payload = {
         vendor_name: document.getElementById('edit-vendor').value,
         purchase_date: document.getElementById('edit-date').value,
@@ -191,6 +217,7 @@ function saveReceiptEdit(receiptId) {
         total: parseFloat(document.getElementById('edit-total').value) || 0,
         payment_method: document.getElementById('edit-payment').value,
         matched_project_name: document.getElementById('edit-project').value,
+        category_id: catEl ? (parseInt(catEl.value) || null) : null,
     };
 
     fetch('/api/receipts/' + receiptId + '/edit', {
