@@ -739,7 +739,7 @@ def api_edit_receipt(receipt_id):
         allowed_fields = {
             "vendor_name", "vendor_city", "vendor_state", "purchase_date",
             "subtotal", "tax", "total", "payment_method", "notes",
-            "matched_project_name", "project_id",
+            "matched_project_name", "project_id", "status", "duplicate_of",
         }
         updates = {k: v for k, v in data.items() if k in allowed_fields}
         if not updates:
@@ -779,6 +779,80 @@ def api_receipt_edit_history(receipt_id):
             (receipt_id,),
         ).fetchall()
         return jsonify({"receipt_id": receipt_id, "edits": [dict(e) for e in edits]})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/receipts/<int:receipt_id>/delete", methods=["POST"])
+def api_delete_receipt(receipt_id):
+    """Soft-delete a receipt (set status to 'deleted')."""
+    db = get_db()
+    try:
+        receipt = db.execute("SELECT * FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        if not receipt:
+            return jsonify({"error": "Receipt not found"}), 404
+
+        old_status = receipt["status"]
+        db.execute("UPDATE receipts SET status = 'deleted' WHERE id = ?", (receipt_id,))
+        db.execute(
+            "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, 'status', ?, 'deleted', 'management')",
+            (receipt_id, old_status),
+        )
+        db.commit()
+        log.info("Receipt #%d soft-deleted (was %s)", receipt_id, old_status)
+        return jsonify({"status": "deleted", "id": receipt_id})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/receipts/<int:receipt_id>/restore", methods=["POST"])
+def api_restore_receipt(receipt_id):
+    """Restore a deleted or duplicate receipt back to confirmed."""
+    db = get_db()
+    try:
+        receipt = db.execute("SELECT * FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        if not receipt:
+            return jsonify({"error": "Receipt not found"}), 404
+
+        old_status = receipt["status"]
+        db.execute("UPDATE receipts SET status = 'confirmed', duplicate_of = NULL WHERE id = ?", (receipt_id,))
+        db.execute(
+            "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, 'status', ?, 'confirmed', 'management')",
+            (receipt_id, old_status),
+        )
+        db.commit()
+        log.info("Receipt #%d restored to confirmed (was %s)", receipt_id, old_status)
+        return jsonify({"status": "restored", "id": receipt_id})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/receipts/<int:receipt_id>/duplicate", methods=["POST"])
+def api_mark_duplicate(receipt_id):
+    """Mark a receipt as duplicate of another."""
+    data = request.get_json(silent=True) or {}
+    duplicate_of = data.get("duplicate_of")
+
+    db = get_db()
+    try:
+        receipt = db.execute("SELECT * FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        if not receipt:
+            return jsonify({"error": "Receipt not found"}), 404
+
+        if duplicate_of:
+            original = db.execute("SELECT id FROM receipts WHERE id = ?", (duplicate_of,)).fetchone()
+            if not original:
+                return jsonify({"error": "Original receipt not found"}), 404
+
+        old_status = receipt["status"]
+        db.execute("UPDATE receipts SET status = 'duplicate', duplicate_of = ? WHERE id = ?", (duplicate_of, receipt_id))
+        db.execute(
+            "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, 'status', ?, 'duplicate', 'management')",
+            (receipt_id, old_status),
+        )
+        db.commit()
+        log.info("Receipt #%d marked as duplicate of #%s", receipt_id, duplicate_of)
+        return jsonify({"status": "duplicate", "id": receipt_id, "duplicate_of": duplicate_of})
     finally:
         db.close()
 
@@ -1079,6 +1153,7 @@ def _get_dashboard_stats(db) -> dict:
             COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending_count,
             COALESCE(SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END), 0) as confirmed_count
         FROM receipts
+        WHERE status NOT IN ('deleted', 'duplicate')
     """).fetchone()
 
     employee_count = db.execute("SELECT COUNT(*) as cnt FROM employees WHERE is_active = 1").fetchone()["cnt"]
@@ -1172,6 +1247,11 @@ def _query_receipts(db, args) -> list:
     if status:
         conditions.append("r.status = ?")
         params.append(status)
+
+    # Exclude deleted and duplicate receipts by default
+    include_hidden = args.get("include_hidden", "0")
+    if include_hidden != "1" and not status:
+        conditions.append("r.status NOT IN ('deleted', 'duplicate')")
 
     where = " AND ".join(conditions) if conditions else "1=1"
 

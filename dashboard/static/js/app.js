@@ -73,10 +73,18 @@ function openReceiptModal(receiptId) {
 
             details.innerHTML = html;
 
-            // Footer with edit/history buttons
+            // Footer with edit/history/delete buttons
             if (footer) {
-                footer.innerHTML = '<button class="btn btn--small btn--secondary" onclick="toggleEditForm(' + receiptId + ')">Edit Receipt</button>'
+                var isHidden = (data.status === 'deleted' || data.status === 'duplicate');
+                var btns = '<button class="btn btn--small btn--secondary" onclick="toggleEditForm(' + receiptId + ')">Edit Receipt</button>'
                     + ' <button class="btn btn--small btn--secondary" onclick="showEditHistory(' + receiptId + ')">Edit History</button>';
+                if (isHidden) {
+                    btns += ' <button class="btn btn--small btn--success" onclick="restoreReceipt(' + receiptId + ')">Restore</button>';
+                } else {
+                    btns += ' <button class="btn btn--small btn--secondary" onclick="markDuplicate(' + receiptId + ')">Mark Duplicate</button>';
+                    btns += ' <button class="btn btn--small btn--danger" onclick="deleteReceipt(' + receiptId + ')">Delete</button>';
+                }
+                footer.innerHTML = btns;
             }
         })
         .catch(function(err) {
@@ -225,6 +233,59 @@ function showEditHistory(receiptId) {
             html += '</tbody></table>';
             panel.innerHTML = html;
         });
+}
+
+
+// ── Delete / Restore / Duplicate ────────────────────────
+
+function deleteReceipt(receiptId) {
+    if (!confirm('Are you sure you want to delete this receipt? It can be restored from the Ledger.')) return;
+    fetch('/api/receipts/' + receiptId + '/delete', { method: 'POST' })
+        .then(function(resp) { return resp.json(); })
+        .then(function(d) {
+            if (d.status === 'deleted') {
+                closeReceiptModal();
+                if (typeof loadLedger === 'function') loadLedger();
+                else location.reload();
+            } else {
+                alert(d.error || 'Failed to delete receipt');
+            }
+        });
+}
+
+function restoreReceipt(receiptId) {
+    fetch('/api/receipts/' + receiptId + '/restore', { method: 'POST' })
+        .then(function(resp) { return resp.json(); })
+        .then(function(d) {
+            if (d.status === 'restored') {
+                openReceiptModal(receiptId);
+                if (typeof loadLedger === 'function') loadLedger();
+            } else {
+                alert(d.error || 'Failed to restore receipt');
+            }
+        });
+}
+
+function markDuplicate(receiptId) {
+    var dupOf = prompt('Enter the receipt ID this is a duplicate of (or leave blank):');
+    if (dupOf === null) return; // cancelled
+    var payload = {};
+    if (dupOf && dupOf.trim()) payload.duplicate_of = parseInt(dupOf.trim(), 10);
+    fetch('/api/receipts/' + receiptId + '/duplicate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(d) {
+        if (d.status === 'duplicate') {
+            closeReceiptModal();
+            if (typeof loadLedger === 'function') loadLedger();
+            else location.reload();
+        } else {
+            alert(d.error || 'Failed to mark as duplicate');
+        }
+    });
 }
 
 

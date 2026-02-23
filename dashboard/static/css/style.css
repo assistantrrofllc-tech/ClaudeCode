@@ -197,6 +197,8 @@ button { cursor: pointer; font-family: inherit; }
 .badge--pending { background: #fef9c3; color: #ca8a04; }
 .badge--flagged { background: #fee2e2; color: #dc2626; }
 .badge--rejected { background: #f3f4f6; color: #6b7280; }
+.badge--deleted { background: #fee2e2; color: #dc2626; font-weight: 600; }
+.badge--duplicate { background: #fae8ff; color: #a21caf; font-weight: 600; }
 .badge--red { background: #ef4444; color: #fff; }
 
 /* ── Receipt Image Modal ───────────────────────────────── */

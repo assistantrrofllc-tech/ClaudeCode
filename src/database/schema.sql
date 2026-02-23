@@ -89,8 +89,9 @@ CREATE TABLE IF NOT EXISTS receipts (
     payment_method        TEXT,
     image_path            TEXT,
     status                TEXT    DEFAULT 'pending'
-                                 CHECK(status IN ('pending', 'confirmed', 'flagged', 'rejected')),
+                                 CHECK(status IN ('pending', 'confirmed', 'flagged', 'rejected', 'deleted', 'duplicate')),
     flag_reason           TEXT,
+    duplicate_of          INTEGER REFERENCES receipts(id),
     is_return             INTEGER DEFAULT 0,
     is_missed_receipt     INTEGER DEFAULT 0,
     matched_project_name  TEXT,

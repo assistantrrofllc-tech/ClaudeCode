@@ -56,6 +56,9 @@
         <option value="pending">Pending</option>
         <option value="flagged">Flagged</option>
     </select>
+    <label class="toggle-label" style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="show-hidden" onchange="loadLedger()"> Show Hidden
+    </label>
     <select id="employee-filter" onchange="loadLedger()">
         <option value="">All Employees</option>
         {% for e in employees %}
@@ -158,11 +161,14 @@ function loadLedger() {
     var emp = document.getElementById('employee-filter').value;
     var proj = document.getElementById('project-filter').value;
 
+    var showHidden = document.getElementById('show-hidden').checked;
+
     params.set('sort', sort);
     params.set('order', order);
     if (status) params.set('status', status);
     if (emp) params.set('employee', emp);
     if (proj) params.set('project', proj);
+    if (showHidden) params.set('include_hidden', '1');
 
     fetch('/api/receipts?' + params.toString())
         .then(function(r) { return r.json(); })
