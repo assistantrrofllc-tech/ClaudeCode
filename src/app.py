@@ -34,7 +34,7 @@ def create_app() -> Flask:
     app.secret_key = SECRET_KEY
 
     # Cache-busting version for static files (changes on each deploy)
-    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "4")
+    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "5")
 
     @app.context_processor
     def inject_cache_version():
