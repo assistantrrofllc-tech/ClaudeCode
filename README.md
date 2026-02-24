@@ -16,9 +16,12 @@ No app to download. No login for field crews. Just text a photo.
 
 | Module | Description | Status |
 |---|---|---|
-| **The Ledger** | Receipt tracking via SMS — OCR, confirmation, categorization, dashboard | ✅ Complete |
-| **Inventory Tracker** | Shop supply tracking, recurring orders, low stock alerts | Planned |
-| **Project Management** | Job costing, crew assignment, project timelines | Planned |
+| **CrewLedger** | Receipt tracking via SMS — OCR, categorization, dashboard, exports | ✅ Complete |
+| **CrewCert** | Employee certification tracking — roster, cert CRUD, PDF splitter, CSV import | ✅ Complete |
+| **CrewComms** | Cross-channel communication log (SMS, email, calls) | DB scaffold |
+| **CrewSchedule** | Crew scheduling and job assignment | Planned |
+| **CrewAsset** | Equipment and asset tracking | Planned |
+| **CrewInventory** | Shop supply tracking, recurring orders, low stock alerts | Planned |
 
 ## How It Works
 
@@ -32,13 +35,7 @@ Employee texts receipt photo + project name
   GPT-4o-mini Vision extracts receipt data (OCR)
         |
         v
-  Confirmation message sent back via SMS
-        |
-        v
-  Employee confirms via YES/NO reply
-        |
-        v
-  Receipt saved to SQLite with all fields
+  Receipt auto-confirmed and saved to SQLite
         |
         v
   Dashboard + Reports + CSV Export
@@ -53,8 +50,10 @@ Employee texts receipt photo + project name
 | SMS Gateway | Twilio Programmable Messaging |
 | OCR / Vision | OpenAI GPT-4o-mini Vision API |
 | Frontend | Mobile-first single-page web dashboard |
-| Image Storage | Local filesystem (`storage/receipts/`) |
-| Export | CSV (QuickBooks-compatible) |
+| Image Storage | Local filesystem (`storage/receipts/`, `storage/certifications/`) |
+| Export | CSV (QuickBooks-compatible), Excel |
+| PDF Processing | pdfplumber, pypdf |
+| Fuzzy Matching | thefuzz |
 | Email Reports | Python SMTP |
 | Tunnel (Dev) | ngrok |
 
@@ -63,16 +62,24 @@ Employee texts receipt photo + project name
 ### SMS Receipt Pipeline
 - Auto-registration of new employees on first text
 - GPT-4o-mini Vision OCR extracts vendor, items, totals, tax, payment method
-- Confirmation flow via YES/NO text reply
+- Auto-confirm receipts (A2P pending — no outbound SMS confirmation)
 - Missed receipt support (manual entry via text)
 - Fuzzy project matching against active projects
+- Editable submitter with audit trail
 
 ### Web Dashboard (Mobile-First)
-- **Home** — Week total spend, comparison vs prior week, flagged count, spend breakdown by crew/card/project, recent activity feed
-- **Flags** — Review queue for flagged receipts with approve/edit/dismiss actions
-- **Search** — Full-text search with filters (date, employee, project, vendor, category, amount, status), pagination, CSV export
-- **Employee Drill-down** — Tap any crew member to see all their receipts
-- **Receipt Detail** — Tap any transaction to see full details with the actual receipt photo
+- **Home** — Week total spend, flagged count, recent activity feed
+- **Ledger** — Banking-style transaction table with filters, inline edit, status management
+- **Crew** — Employee roster with certification badge summaries, search/filter
+- **Crew Detail** — Employee identity card, cert CRUD, document viewer, notes
+- **Admin Tools** — PDF cert splitter, bulk CSV cert import with fuzzy name matching
+- **Receipt Detail** — Full details with receipt photo, edit form, audit history
+
+### Permissions
+- Module-level access control (none/view/edit/admin)
+- System roles (super_admin, company_admin, manager, employee)
+- Permission-gated receipt editing (edit controls hidden for view-only users)
+- Defaults to allow when no auth session (scaffolding for future auth)
 
 ### QuickBooks CSV Export
 - One-click export with columns: Date, Vendor, Account, Amount, Tax, Total, Payment Method, Memo, Line Items
@@ -86,43 +93,41 @@ Employee texts receipt photo + project name
 ## Project Structure
 
 ```
-crewledger/
-├── CLAUDE.md              # Full build specification
-├── README.md              # This file
-├── .env.example           # Environment variable template
-├── .gitignore
-├── requirements.txt       # Python dependencies
+crewos/
+├── CLAUDE.md                  # Build spec and session context
+├── CHANGELOG.md               # Release history
+├── README.md                  # This file
+├── requirements.txt           # Python dependencies
 ├── config/
-│   └── settings.py        # Environment variable loading
+│   └── settings.py            # Environment variable loading
 ├── src/
-│   ├── app.py             # Flask application entry point
+│   ├── app.py                 # Flask application entry point
 │   ├── database/
-│   │   ├── connection.py  # SQLite connection helper (WAL, Row factory)
-│   │   └── schema.sql     # Full database schema + seed data
+│   │   ├── connection.py      # SQLite connection helper (WAL, Row factory)
+│   │   └── schema.sql         # Full database schema + seed data
 │   ├── api/
 │   │   ├── twilio_webhook.py  # POST /webhook/sms — Twilio inbound
-│   │   ├── dashboard.py       # Dashboard API + receipt image serving
-│   │   ├── export.py          # GET /export/quickbooks — CSV export
+│   │   ├── dashboard.py       # Dashboard routes + APIs (~1600 lines)
+│   │   ├── admin_tools.py     # PDF splitter + CSV cert import
 │   │   └── reports.py         # Weekly report endpoints
 │   ├── services/
 │   │   ├── ocr.py             # GPT-4o-mini Vision receipt extraction
+│   │   ├── permissions.py     # Permission checking (check_permission)
 │   │   ├── report_generator.py
 │   │   └── email_sender.py
 │   └── messaging/
 │       └── sms_handler.py     # SMS conversation flow engine
 ├── dashboard/
-│   └── templates/
-│       └── dashboard.html     # Single-page dashboard (HTML + CSS + JS)
+│   ├── templates/             # Jinja2 templates (base, index, ledger, crew, etc.)
+│   └── static/                # CSS + JS
 ├── storage/
-│   └── receipts/              # Receipt image files (gitignored)
+│   ├── receipts/              # Receipt images (gitignored)
+│   └── certifications/        # Cert documents (gitignored)
 ├── data/                      # SQLite database (gitignored)
-├── tests/
-│   ├── test_twilio_webhook.py # 11 tests — SMS pipeline
-│   ├── test_weekly_report.py  # 12 tests — report generation
-│   ├── test_export.py         # 16 tests — CSV export
-│   ├── test_dashboard.py      # 25 tests — dashboard API
-│   └── test_ocr.py            # 15 tests — OCR parsing
-└── scripts/                   # DB setup, seed data, utilities
+├── scripts/
+│   └── import_sms_backup.py   # SMS Backup & Restore XML importer
+├── tests/                     # 137 pytest tests
+└── openspec/                  # Specs and change archives
 ```
 
 ## Getting Started
@@ -191,7 +196,7 @@ source .venv/bin/activate
 python -m pytest tests/ -v
 ```
 
-All **79 tests** should pass.
+**136 tests** should pass (1 known skip: openpyxl not installed).
 
 ## API Endpoints
 
@@ -224,11 +229,12 @@ At full scale (15 employees, ~300 receipts/month):
 
 ## Build Phases
 
-1. **Phase 1** — Core receipt pipeline: Twilio -> OCR -> confirm -> save -> dashboard ✅
+1. **Phase 1** — Core receipt pipeline: Twilio -> OCR -> save -> dashboard ✅
 2. **Phase 2** — Weekly email reports, QuickBooks CSV export ✅
-3. **Phase 3** — Cost intelligence, anomaly detection, vendor comparison
-4. **Phase 4** — Module 2: Inventory Tracker
-5. **Phase 5** — Module 3: Project Management
+3. **CrewCert** — Employee roster, certification tracking, admin tools ✅
+4. **CrewComms** — Communication logging (DB scaffold complete)
+5. **Permissions** — Module-level access control (framework complete)
+6. **Phase 3** — Cost intelligence, anomaly detection, vendor comparison
 
 ## License
 
