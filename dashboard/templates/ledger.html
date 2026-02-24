@@ -186,6 +186,7 @@ function loadLedger() {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             currentData = data;
+            _receiptNavList = data.map(function(r) { return r.id; });
             renderLedger(data);
             updateTotals(data);
         });

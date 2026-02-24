@@ -8,6 +8,7 @@ if (typeof CAN_EDIT === 'undefined') var CAN_EDIT = true;
 var _currentReceiptId = null;
 var _currentReceiptData = null;
 var _autoEditOnLoad = false;
+var _receiptNavList = null;
 
 function openReceiptModal(receiptId) {
     var modal = document.getElementById('receipt-modal');
@@ -101,6 +102,8 @@ function openReceiptModal(receiptId) {
                 }
                 footer.innerHTML = btns;
             }
+
+            _updateNavButtons();
         })
         .catch(function(err) {
             details.innerHTML = '<div class="loading">Failed to load receipt details.</div>';
@@ -113,12 +116,85 @@ function closeReceiptModal() {
     document.body.style.overflow = '';
     _currentReceiptId = null;
     _currentReceiptData = null;
+    var prevBtn = document.getElementById('modal-nav-prev');
+    var nextBtn = document.getElementById('modal-nav-next');
+    if (prevBtn) prevBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = 'none';
 }
 
-// Close modal on Escape key
+// ── Receipt Navigation ───────────────────────────────────
+
+function _updateNavButtons() {
+    var prevBtn = document.getElementById('modal-nav-prev');
+    var nextBtn = document.getElementById('modal-nav-next');
+    if (!prevBtn || !nextBtn) return;
+
+    if (!_receiptNavList || _receiptNavList.length < 2 || _currentReceiptId === null) {
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        return;
+    }
+
+    var idx = _receiptNavList.indexOf(_currentReceiptId);
+    if (idx === -1) {
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        return;
+    }
+
+    prevBtn.style.display = 'flex';
+    nextBtn.style.display = 'flex';
+    prevBtn.disabled = (idx === 0);
+    nextBtn.disabled = (idx === _receiptNavList.length - 1);
+}
+
+function navigateReceipt(direction) {
+    if (!_receiptNavList || _currentReceiptId === null) return;
+    var idx = _receiptNavList.indexOf(_currentReceiptId);
+    if (idx === -1) return;
+    var newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= _receiptNavList.length) return;
+    openReceiptModal(_receiptNavList[newIdx]);
+}
+
+// Close modal on Escape key, navigate with arrows
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeReceiptModal();
+    var modal = document.getElementById('receipt-modal');
+    if (modal && modal.style.display !== 'none') {
+        if (e.key === 'ArrowLeft') { navigateReceipt(-1); e.preventDefault(); }
+        if (e.key === 'ArrowRight') { navigateReceipt(1); e.preventDefault(); }
+    }
 });
+
+// ── Mobile Swipe Navigation ──────────────────────────────
+(function() {
+    var startX, startY, startTime;
+    var modal = document.getElementById('receipt-modal');
+    if (!modal) return;
+
+    modal.addEventListener('touchstart', function(e) {
+        if (e.touches.length !== 1) return;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        startTime = Date.now();
+    }, { passive: true });
+
+    modal.addEventListener('touchend', function(e) {
+        if (startX === undefined) return;
+        var dx = e.changedTouches[0].clientX - startX;
+        var dy = e.changedTouches[0].clientY - startY;
+        var dt = Date.now() - startTime;
+        startX = undefined;
+
+        if (dt > 500) return;
+        if (Math.abs(dx) < 50) return;
+        if (Math.abs(dy) > 100) return;
+
+        if (dx > 0) navigateReceipt(-1);   // swipe right = previous
+        else navigateReceipt(1);            // swipe left = next
+    }, { passive: true });
+})();
 
 
 // ── Notes ───────────────────────────────────────────────

@@ -387,6 +387,39 @@ button { cursor: pointer; font-family: inherit; }
 }
 .line-items-table .amount { text-align: right; }
 
+/* ── Modal Navigation Arrows ──────────────────────────── */
+.modal-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.85);
+    color: var(--text);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+.modal-nav:hover { background: #fff; }
+.modal-nav--prev { left: 12px; }
+.modal-nav--next { right: 12px; }
+.modal-nav:disabled {
+    opacity: 0.3;
+    pointer-events: none;
+}
+@media (max-width: 639px) {
+    .modal-nav { width: 36px; height: 36px; }
+    .modal-nav--prev { left: 6px; }
+    .modal-nav--next { right: 6px; }
+    .modal-nav svg { width: 16px; height: 16px; }
+}
+
 /* ── Loading ───────────────────────────────────────────── */
 .loading {
     text-align: center;

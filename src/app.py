@@ -39,7 +39,7 @@ def create_app() -> Flask:
     app.secret_key = SECRET_KEY
 
     # Cache-busting version for static files (changes on each deploy)
-    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "16")
+    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "17")
 
     # CrewOS module definitions — available to all templates
     CREWOS_MODULES = [
