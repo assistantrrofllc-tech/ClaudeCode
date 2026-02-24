@@ -153,6 +153,7 @@ function renderCrewList(employees) {
 
 function renderEmployeeCard(emp) {
     const name = emp.full_name || emp.first_name;
+    const displayName = emp.nickname ? name + ' (' + emp.nickname + ')' : name;
     const phone = emp.phone_number || '';
     const email = emp.email || '';
     const crewRole = [emp.crew, emp.role].filter(Boolean).join(' \u00b7 ');
@@ -172,6 +173,9 @@ function renderEmployeeCard(emp) {
     }
 
     let badgesHtml = '';
+    if (emp.is_driver) {
+        badgesHtml += '<span class="cert-badge cert-badge--valid" title="Driver"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/></svg>DR</span>';
+    }
     if (emp.certs) {
         emp.certs.forEach(c => {
             if (c.status !== 'none') badgesHtml += certBadge(c.slug, c.status, c.name);
@@ -180,7 +184,7 @@ function renderEmployeeCard(emp) {
 
     return `
     <div class="crew-card" onclick="window.location='/crew/${emp.id}'"
-         data-name="${name.toLowerCase()}"
+         data-name="${displayName.toLowerCase()}"
          data-crew="${(emp.crew || '').toLowerCase()}"
          data-active="${emp.is_active ? '1' : '0'}"
          data-expired="${emp.has_expired ? '1' : '0'}"
@@ -188,7 +192,7 @@ function renderEmployeeCard(emp) {
         <div class="crew-card__header">
             <div class="crew-card__avatar">${initials}</div>
             <div class="crew-card__info">
-                <div class="crew-card__name">${escHtml(name)}</div>
+                <div class="crew-card__name">${escHtml(displayName)}</div>
                 ${crewRole ? `<div class="crew-card__role">${escHtml(crewRole)}</div>` : ''}
             </div>
             <div class="crew-card__status">

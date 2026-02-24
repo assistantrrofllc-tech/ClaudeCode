@@ -15,7 +15,7 @@
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M5.5 21c0-4.14 2.91-7 6.5-7s6.5 2.86 6.5 7"/></svg>
         </div>
         <div class="emp-card__info">
-            <h2 id="emp-name">{{ employee.full_name or employee.first_name }}</h2>
+            <h2 id="emp-name">{{ employee.full_name or employee.first_name }}{% if employee.nickname %} ({{ employee.nickname }}){% endif %}</h2>
             <div class="emp-card__meta">
                 {% if employee.phone_number %}
                 <a href="tel:{{ employee.phone_number }}" class="crew-row__phone">{{ employee.phone_number }}</a>
@@ -69,6 +69,18 @@
             <div class="form-group">
                 <label>Role</label>
                 <input type="text" id="edit-role" value="{{ employee.role or '' }}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Nickname</label>
+                <input type="text" id="edit-nickname" value="{{ employee.nickname or '' }}" placeholder="e.g. Cat, Tobacco">
+            </div>
+            <div class="form-group" style="display:flex; align-items:flex-end; gap:8px; padding-bottom:2px;">
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" id="edit-is-driver" {% if employee.is_driver %}checked{% endif %}>
+                    Driver
+                </label>
             </div>
         </div>
         <div style="display:flex; gap:8px; margin-top:8px;">
@@ -314,6 +326,8 @@ async function saveEmployee() {
                 email: document.getElementById('edit-email').value.trim(),
                 crew: document.getElementById('edit-crew').value.trim(),
                 role: document.getElementById('edit-role').value.trim(),
+                nickname: document.getElementById('edit-nickname').value.trim(),
+                is_driver: document.getElementById('edit-is-driver').checked ? 1 : 0,
             }),
         });
         const data = await resp.json();

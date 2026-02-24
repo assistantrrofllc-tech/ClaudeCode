@@ -356,7 +356,7 @@ def api_update_employee(employee_id):
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    allowed = {"first_name", "full_name", "email", "role", "crew", "phone_number", "notes"}
+    allowed = {"first_name", "full_name", "email", "role", "crew", "phone_number", "notes", "nickname", "is_driver"}
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400
@@ -732,7 +732,7 @@ def api_crew_employees():
 
         employees = db.execute("""
             SELECT id, employee_uuid, first_name, full_name, phone_number,
-                   email, role, crew, is_active
+                   email, role, crew, is_active, nickname, is_driver
             FROM employees ORDER BY first_name
         """).fetchall()
 

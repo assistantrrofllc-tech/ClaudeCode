@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS employees (
     crew            TEXT,
     email           TEXT,
     photo           TEXT,
+    nickname        TEXT,
+    is_driver       INTEGER DEFAULT 0,
     notes           TEXT,
     system_role     TEXT    DEFAULT 'employee'
                            CHECK(system_role IN ('super_admin', 'company_admin', 'manager', 'employee')),
