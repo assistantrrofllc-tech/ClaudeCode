@@ -850,7 +850,7 @@ def public_verify_cert(token, cert_id):
         if not doc_path.exists():
             return render_template("verify_no_document.html"), 200
 
-        return send_from_directory(str(doc_path.parent), doc_path.name)
+        return send_file(doc_path, as_attachment=False)
     finally:
         db.close()
 
