@@ -4,39 +4,52 @@
 {% block content %}
 <div class="page-header">
     <h1>CrewCert Dashboard</h1>
+    <div class="header-actions">
+        <button class="btn btn--secondary btn--small" onclick="refreshAll()">Refresh All Statuses</button>
+    </div>
 </div>
 
 <!-- Summary Stats -->
 <div class="crew-stats" id="cert-stats">
     <div class="crew-stat">
         <div class="crew-stat__value" id="stat-total">--</div>
-        <div class="crew-stat__label">Total Crew</div>
+        <div class="crew-stat__label">Active Employees</div>
     </div>
     <div class="crew-stat">
-        <div class="crew-stat__value" id="stat-active">--</div>
-        <div class="crew-stat__label">Active</div>
+        <div class="crew-stat__value crew-stat__value--danger" id="stat-expired">--</div>
+        <div class="crew-stat__label">Expired</div>
     </div>
     <div class="crew-stat">
         <div class="crew-stat__value crew-stat__value--warning" id="stat-expiring">--</div>
         <div class="crew-stat__label">Expiring Soon</div>
     </div>
     <div class="crew-stat">
-        <div class="crew-stat__value crew-stat__value--danger" id="stat-expired">--</div>
-        <div class="crew-stat__label">Expired</div>
+        <div class="crew-stat__value" id="stat-no-expiry" style="color:var(--text-muted);">--</div>
+        <div class="crew-stat__label">No Expiry Date</div>
     </div>
 </div>
 
-<!-- Cert Alerts -->
-<section class="section">
+<!-- Active Alerts -->
+<section class="section" style="margin-top:20px;">
     <div class="section-header">
-        <h2>Certification Alerts</h2>
+        <h2>Active Alerts</h2>
         <a href="/crew" class="link">View all crew</a>
     </div>
     <div id="alerts-loading" class="loading">Loading alerts...</div>
     <div id="alerts-empty" class="card" style="display:none; text-align:center; padding:32px 20px;">
         <p style="color:var(--text-muted); font-size:15px;">All certifications are up to date.</p>
     </div>
-    <div id="alerts-list" class="receipt-list" style="display:none;"></div>
+    <div id="alerts-list" style="display:none;"></div>
+</section>
+
+<!-- Upcoming Expirations Calendar -->
+<section class="section" style="margin-top:20px;">
+    <h2>Upcoming Expirations (90 Days)</h2>
+    <div id="calendar-loading" class="loading">Loading calendar...</div>
+    <div id="calendar-empty" class="card" style="display:none; text-align:center; padding:32px 20px;">
+        <p style="color:var(--text-muted); font-size:15px;">No certifications expiring in the next 90 days.</p>
+    </div>
+    <div id="calendar-list" style="display:none;"></div>
 </section>
 {% endblock %}
 
@@ -46,72 +59,158 @@ document.addEventListener('DOMContentLoaded', loadCertDashboard);
 
 async function loadCertDashboard() {
     try {
-        const resp = await fetch('/api/crew/employees');
-        const employees = await resp.json();
-        renderStats(employees);
-        renderAlerts(employees);
+        const resp = await fetch('/api/crewcert/dashboard');
+        const data = await resp.json();
+        renderStats(data);
+        renderAlerts(data);
+        renderCalendar(data);
     } catch (err) {
         document.getElementById('alerts-loading').textContent = 'Failed to load data.';
     }
 }
 
-function renderStats(employees) {
-    document.getElementById('stat-total').textContent = employees.length;
-    document.getElementById('stat-active').textContent = employees.filter(e => e.is_active).length;
-    document.getElementById('stat-expiring').textContent = employees.filter(e => e.has_expiring).length;
-    document.getElementById('stat-expired').textContent = employees.filter(e => e.has_expired).length;
+function renderStats(data) {
+    document.getElementById('stat-total').textContent = data.total_employees;
+    document.getElementById('stat-expired').textContent = data.expired_count;
+    document.getElementById('stat-expiring').textContent = data.expiring_count;
+    document.getElementById('stat-no-expiry').textContent = data.no_expiry_count;
 }
 
-function renderAlerts(employees) {
+function renderAlerts(data) {
     const loading = document.getElementById('alerts-loading');
     const empty = document.getElementById('alerts-empty');
     const list = document.getElementById('alerts-list');
-
     loading.style.display = 'none';
 
-    // Collect employees with expired or expiring certs
-    const alerts = [];
-    employees.forEach(emp => {
-        if (!emp.certs) return;
-        emp.certs.forEach(c => {
-            if (c.status === 'expired' || c.status === 'expiring') {
-                alerts.push({
-                    employee_id: emp.id,
-                    name: emp.full_name || emp.first_name,
-                    cert_name: c.name,
-                    cert_status: c.status,
-                });
-            }
+    // Combine persistent alerts with live-computed alerts from employee certs
+    // Use the /api/crew/employees endpoint for real-time cert status
+    fetch('/api/crew/employees').then(r => r.json()).then(employees => {
+        const liveAlerts = [];
+        employees.forEach(emp => {
+            if (!emp.certs || !emp.is_active) return;
+            emp.certs.forEach(c => {
+                if (c.status === 'expired' || c.status === 'expiring') {
+                    liveAlerts.push({
+                        employee_id: emp.id,
+                        name: emp.full_name || emp.first_name,
+                        cert_name: c.name,
+                        status: c.status,
+                    });
+                }
+            });
         });
-    });
 
-    if (alerts.length === 0) {
+        if (liveAlerts.length === 0 && data.alerts.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        list.style.display = 'block';
+        let html = '';
+
+        // Expired section
+        const expired = liveAlerts.filter(a => a.status === 'expired');
+        if (expired.length > 0) {
+            html += '<div class="card" style="margin-bottom:12px; border-left:4px solid var(--danger);">';
+            html += '<h3 style="color:var(--danger); margin-bottom:12px; font-size:14px;">EXPIRED — Requires Immediate Action</h3>';
+            expired.forEach(a => {
+                html += alertRow(a, 'badge--flagged', 'Expired');
+            });
+            html += '</div>';
+        }
+
+        // Expiring section
+        const expiring = liveAlerts.filter(a => a.status === 'expiring');
+        if (expiring.length > 0) {
+            html += '<div class="card" style="margin-bottom:12px; border-left:4px solid var(--warning);">';
+            html += '<h3 style="color:var(--warning); margin-bottom:12px; font-size:14px;">EXPIRING SOON — Action Required</h3>';
+            expiring.forEach(a => {
+                html += alertRow(a, 'badge--pending', 'Expiring');
+            });
+            html += '</div>';
+        }
+
+        list.innerHTML = html;
+    });
+}
+
+function alertRow(a, badgeClass, label) {
+    return `<div class="receipt-row" style="cursor:pointer; padding:10px 0; border-bottom:1px solid var(--border-light);">
+        <div class="receipt-row-main" style="display:flex; justify-content:space-between; align-items:center;">
+            <div onclick="window.location='/crew/${a.employee_id}'" style="flex:1;">
+                <div style="font-weight:600;">${escHtml(a.name)}</div>
+                <div style="font-size:13px; color:var(--text-muted);">${escHtml(a.cert_name)}</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <span class="badge ${badgeClass}">${label}</span>
+                <a href="/crew/${a.employee_id}" class="btn btn--secondary btn--small" style="font-size:11px;">View</a>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderCalendar(data) {
+    const loading = document.getElementById('calendar-loading');
+    const empty = document.getElementById('calendar-empty');
+    const list = document.getElementById('calendar-list');
+    loading.style.display = 'none';
+
+    if (!data.calendar || data.calendar.length === 0) {
         empty.style.display = 'block';
         return;
     }
 
     list.style.display = 'block';
-    let html = '';
-    alerts.forEach(a => {
-        const statusClass = a.cert_status === 'expired' ? 'badge--flagged' : 'badge--pending';
-        const statusLabel = a.cert_status === 'expired' ? 'Expired' : 'Expiring';
-        html += `
-        <div class="receipt-row" onclick="window.location='/crew/${a.employee_id}'" style="cursor:pointer;">
-            <div class="receipt-row-main">
-                <div class="receipt-info">
-                    <div class="receipt-vendor">${escHtml(a.name)}</div>
-                    <div class="receipt-meta">${escHtml(a.cert_name)}</div>
-                </div>
-                <div class="receipt-right">
-                    <span class="badge ${statusClass}">${statusLabel}</span>
-                </div>
-            </div>
-        </div>`;
+
+    // Group by month
+    const byMonth = {};
+    data.calendar.forEach(item => {
+        const d = new Date(item.date + 'T00:00:00');
+        const key = d.toLocaleDateString('en-US', {month: 'long', year: 'numeric'});
+        if (!byMonth[key]) byMonth[key] = [];
+        byMonth[key].push(item);
     });
+
+    let html = '<div class="card">';
+    Object.entries(byMonth).forEach(([month, items]) => {
+        html += `<h4 style="margin:12px 0 8px; color:var(--text-muted); font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">${month}</h4>`;
+        items.forEach(item => {
+            const d = new Date(item.date + 'T00:00:00');
+            const dayStr = d.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+            html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-light);">
+                <div>
+                    <span style="font-weight:600; min-width:70px; display:inline-block;">${dayStr}</span>
+                    <span>${escHtml(item.employee_name)} — ${escHtml(item.cert_name)}</span>
+                </div>
+                <a href="/crew/${item.employee_id}" class="btn btn--secondary btn--small" style="font-size:11px;">View</a>
+            </div>`;
+        });
+    });
+    html += '</div>';
     list.innerHTML = html;
 }
 
+async function refreshAll() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Refreshing...';
+    try {
+        const resp = await fetch('/api/crewcert/refresh', {method: 'POST'});
+        const data = await resp.json();
+        btn.textContent = `Done (${data.alerts_created} alerts)`;
+        setTimeout(() => {
+            btn.textContent = 'Refresh All Statuses';
+            btn.disabled = false;
+            loadCertDashboard();
+        }, 2000);
+    } catch (err) {
+        btn.textContent = 'Failed';
+        btn.disabled = false;
+    }
+}
+
 function escHtml(str) {
+    if (!str) return '';
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;

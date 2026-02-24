@@ -264,12 +264,14 @@ function renderBadges() {
         const cert = lookup[ct.id];
         const status = cert ? cert.status : 'none';
         if (status === 'none') return;
+        const cssStatus = (status === 'no_expiry') ? 'valid' : status;
+        const titleStatus = (status === 'no_expiry') ? 'no expiry date' : status;
         var icon = CERT_ICONS[ct.slug] || '';
         var abbr = CERT_ABBR[ct.slug] || ct.slug.substring(0, 2).toUpperCase();
         if (cert && cert.document_path) {
-            html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${status}" title="${ct.name}: ${status}" onclick="event.preventDefault(); openCertDoc('${escHtml(cert.document_path)}', '${escHtml(ct.name)}')">${icon}${abbr}</a>`;
+            html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${cssStatus}" title="${ct.name}: ${titleStatus}" onclick="event.preventDefault(); openCertDoc('${escHtml(cert.document_path)}', '${escHtml(ct.name)}')">${icon}${abbr}</a>`;
         } else {
-            html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${status}" title="${ct.name}: ${status}">${icon}${abbr}</a>`;
+            html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${cssStatus}" title="${ct.name}: ${titleStatus}">${icon}${abbr}</a>`;
         }
     });
     container.innerHTML = html;

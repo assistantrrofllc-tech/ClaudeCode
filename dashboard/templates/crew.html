@@ -242,8 +242,10 @@ var CERT_ABBR = {
 function certBadge(slug, status, name) {
     var icon = CERT_ICONS[slug] || '';
     var abbr = CERT_ABBR[slug] || slug.substring(0, 2).toUpperCase();
-    var title = name + ': ' + status;
-    var cls = 'cert-badge cert-badge--' + status;
+    // no_expiry renders like valid (cert exists, just no date)
+    var cssStatus = (status === 'no_expiry') ? 'valid' : status;
+    var title = name + ': ' + (status === 'no_expiry' ? 'no expiry date' : status);
+    var cls = 'cert-badge cert-badge--' + cssStatus;
     return '<span class="' + cls + '" title="' + title + '">' + icon + abbr + '</span>';
 }
 

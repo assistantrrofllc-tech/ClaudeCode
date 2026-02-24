@@ -22,6 +22,7 @@ from flask import (
 
 from config.settings import RECEIPT_STORAGE_PATH, CERT_STORAGE_PATH
 from src.database.connection import get_db
+from src.services.cert_status import calculate_cert_status, days_until_expiry
 from src.services.permissions import check_permission
 
 log = logging.getLogger(__name__)
@@ -763,7 +764,7 @@ def public_verify(token):
 
         cert_list = []
         for c in certs:
-            status = _cert_status(c["expires_at"]) if c["expires_at"] else "valid"
+            status = calculate_cert_status(c["expires_at"])
             cert_list.append({
                 "name": c["cert_name"],
                 "issued_at": c["issued_at"],
@@ -848,6 +849,132 @@ def api_employee_scan_log(employee_id):
         db.close()
 
 
+# ── CrewCert Dashboard API ───────────────────────────────
+
+
+@dashboard_bp.route("/api/crewcert/dashboard")
+def api_crewcert_dashboard():
+    """Dashboard summary: counts, active alerts, upcoming expirations."""
+    db = get_db()
+    try:
+        # Summary counts
+        total_employees = db.execute(
+            "SELECT COUNT(*) as cnt FROM employees WHERE is_active = 1"
+        ).fetchone()["cnt"]
+
+        # Get all active certs with expiry info
+        certs = db.execute("""
+            SELECT c.id, c.employee_id, c.expires_at, c.cert_type_id,
+                   ct.name as cert_type_name,
+                   e.first_name, e.full_name
+            FROM certifications c
+            JOIN certification_types ct ON c.cert_type_id = ct.id
+            JOIN employees e ON c.employee_id = e.id
+            WHERE c.is_active = 1 AND e.is_active = 1
+        """).fetchall()
+
+        expired_count = 0
+        expiring_count = 0
+        no_expiry_count = 0
+        for c in certs:
+            status = calculate_cert_status(c["expires_at"])
+            if status == "expired":
+                expired_count += 1
+            elif status == "expiring":
+                expiring_count += 1
+            elif status == "no_expiry":
+                no_expiry_count += 1
+
+        # Active (unacknowledged) alerts
+        alerts = db.execute("""
+            SELECT ca.*, e.first_name, e.full_name,
+                   ct.name as cert_type_name, c.expires_at
+            FROM cert_alerts ca
+            JOIN employees e ON ca.employee_id = e.id
+            JOIN certifications c ON ca.cert_id = c.id
+            JOIN certification_types ct ON c.cert_type_id = ct.id
+            WHERE ca.acknowledged = 0
+            ORDER BY
+                CASE ca.alert_type WHEN 'expired' THEN 0 WHEN 'expiring' THEN 1 ELSE 2 END,
+                ca.created_at DESC
+        """).fetchall()
+
+        alert_list = []
+        for a in alerts:
+            days = days_until_expiry(a["expires_at"])
+            alert_list.append({
+                "id": a["id"],
+                "employee_id": a["employee_id"],
+                "cert_id": a["cert_id"],
+                "employee_name": a["full_name"] or a["first_name"],
+                "cert_name": a["cert_type_name"],
+                "alert_type": a["alert_type"],
+                "days_until_expiry": days,
+                "expires_at": a["expires_at"],
+                "created_at": a["created_at"],
+            })
+
+        # Upcoming expirations (next 90 days) for calendar
+        upcoming = db.execute("""
+            SELECT c.expires_at, ct.name as cert_type_name,
+                   e.first_name, e.full_name, e.id as employee_id
+            FROM certifications c
+            JOIN certification_types ct ON c.cert_type_id = ct.id
+            JOIN employees e ON c.employee_id = e.id
+            WHERE c.is_active = 1 AND e.is_active = 1
+              AND c.expires_at IS NOT NULL AND c.expires_at != ''
+              AND c.expires_at >= date('now')
+              AND c.expires_at <= date('now', '+90 days')
+            ORDER BY c.expires_at
+        """).fetchall()
+
+        calendar = []
+        for u in upcoming:
+            calendar.append({
+                "date": u["expires_at"],
+                "cert_name": u["cert_type_name"],
+                "employee_name": u["full_name"] or u["first_name"],
+                "employee_id": u["employee_id"],
+            })
+
+        return jsonify({
+            "total_employees": total_employees,
+            "expired_count": expired_count,
+            "expiring_count": expiring_count,
+            "no_expiry_count": no_expiry_count,
+            "alerts": alert_list,
+            "calendar": calendar,
+        })
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crewcert/alerts/<int:alert_id>/acknowledge", methods=["POST"])
+def api_acknowledge_alert(alert_id):
+    """Acknowledge (dismiss) a cert alert."""
+    db = get_db()
+    try:
+        alert = db.execute("SELECT id FROM cert_alerts WHERE id = ?", (alert_id,)).fetchone()
+        if not alert:
+            return jsonify({"error": "Alert not found"}), 404
+        db.execute(
+            "UPDATE cert_alerts SET acknowledged = 1, acknowledged_at = datetime('now'), acknowledged_by = 'dashboard' WHERE id = ?",
+            (alert_id,),
+        )
+        db.commit()
+        return jsonify({"status": "acknowledged"})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crewcert/refresh", methods=["POST"])
+def api_refresh_cert_status():
+    """Manually trigger a cert status refresh."""
+    from src.services.cert_refresh import run_cert_status_refresh
+    result = run_cert_status_refresh()
+    return jsonify({"status": "refreshed", **result})
+
+
 # ── CrewCert API ─────────────────────────────────────────
 
 
@@ -907,11 +1034,8 @@ def api_crew_employees():
             has_expiring = False
             for ct in cert_types:
                 cert = cert_lookup.get(ct["id"])
-                if cert and cert["expires_at"]:
-                    status = _cert_status(cert["expires_at"])
-                elif cert:
-                    # No expiry date — treat as valid (e.g., Bilingual, Crew Lead)
-                    status = "valid"
+                if cert:
+                    status = calculate_cert_status(cert["expires_at"])
                 else:
                     status = "none"
 
@@ -957,7 +1081,7 @@ def api_employee_certs(employee_id):
         certs = []
         for r in rows:
             d = dict(r)
-            d["status"] = _cert_status(r["expires_at"]) if r["expires_at"] else "valid"
+            d["status"] = calculate_cert_status(r["expires_at"])
             certs.append(d)
 
         return jsonify(certs)
@@ -1034,27 +1158,6 @@ def api_delete_certification(cert_id):
         return jsonify({"status": "deleted"})
     finally:
         db.close()
-
-
-def _cert_status(expires_at: str) -> str:
-    """Compute cert status from expiry date.
-
-    Returns: 'valid' (>90 days), 'expiring' (<90 days), or 'expired'.
-    """
-    try:
-        exp = datetime.strptime(expires_at, "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        try:
-            exp = datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S").date()
-        except (ValueError, TypeError):
-            return "none"
-
-    today = datetime.now().date()
-    if exp < today:
-        return "expired"
-    elif (exp - today).days <= 90:
-        return "expiring"
-    return "valid"
 
 
 # ── Projects Page ───────────────────────────────────────

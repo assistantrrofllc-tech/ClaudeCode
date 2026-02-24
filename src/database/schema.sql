@@ -353,3 +353,30 @@ CREATE TABLE IF NOT EXISTS qr_scan_log (
 
 CREATE INDEX IF NOT EXISTS idx_qr_scans_employee ON qr_scan_log(employee_id);
 CREATE INDEX IF NOT EXISTS idx_qr_scans_time     ON qr_scan_log(scanned_at);
+
+-- ============================================================
+-- CERT ALERTS
+-- Status change events for certifications. Powers dashboard
+-- alerts, future notifications. Created by daily refresh job.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS cert_alerts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id     INTEGER NOT NULL,
+    cert_id         INTEGER NOT NULL,
+    alert_type      TEXT    NOT NULL
+                           CHECK(alert_type IN ('expired', 'expiring', 'renewed')),
+    previous_status TEXT,
+    new_status      TEXT,
+    days_until_expiry INTEGER,
+    acknowledged    INTEGER DEFAULT 0,
+    acknowledged_by TEXT,
+    acknowledged_at TEXT,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (employee_id) REFERENCES employees(id),
+    FOREIGN KEY (cert_id)     REFERENCES certifications(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cert_alerts_employee ON cert_alerts(employee_id);
+CREATE INDEX IF NOT EXISTS idx_cert_alerts_type     ON cert_alerts(alert_type);
+CREATE INDEX IF NOT EXISTS idx_cert_alerts_ack      ON cert_alerts(acknowledged);
+CREATE INDEX IF NOT EXISTS idx_cert_alerts_created  ON cert_alerts(created_at);

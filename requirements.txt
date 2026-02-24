@@ -32,5 +32,8 @@ pypdf>=4.0
 # QR code generation (CrewCert public verify)
 qrcode[pil]>=7.4
 
+# Background job scheduler (cert status refresh)
+apscheduler>=3.10
+
 # CSV export (Step 13) — stdlib, listed for clarity
 # csv (built-in)

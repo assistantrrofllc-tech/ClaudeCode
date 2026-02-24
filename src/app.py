@@ -5,6 +5,8 @@ Run with:
     python src/app.py
 """
 
+import atexit
+import logging
 import os
 import sys
 from pathlib import Path
@@ -25,6 +27,8 @@ from src.api.export import export_bp
 from src.api.dashboard import dashboard_bp
 from src.api.admin_tools import admin_bp
 
+log = logging.getLogger(__name__)
+
 
 def create_app() -> Flask:
     app = Flask(
@@ -35,7 +39,7 @@ def create_app() -> Flask:
     app.secret_key = SECRET_KEY
 
     # Cache-busting version for static files (changes on each deploy)
-    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "14")
+    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "15")
 
     # CrewOS module definitions — available to all templates
     CREWOS_MODULES = [
@@ -64,7 +68,42 @@ def create_app() -> Flask:
     def health():
         return {"status": "ok", "service": "crewledger"}
 
+    # Start cert status refresh scheduler (daily at 6am + on startup)
+    # Skip during testing to avoid spawning threads per test
+    if os.environ.get("TESTING") != "1":
+        _start_cert_scheduler(app)
+
     return app
+
+
+def _start_cert_scheduler(app):
+    """Start the daily cert status refresh job using APScheduler."""
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from src.services.cert_refresh import run_cert_status_refresh
+
+        scheduler = BackgroundScheduler(daemon=True)
+        scheduler.add_job(
+            func=run_cert_status_refresh,
+            trigger="cron",
+            hour=6,
+            minute=0,
+            id="daily_cert_refresh",
+            replace_existing=True,
+        )
+        scheduler.start()
+        atexit.register(scheduler.shutdown)
+        app.config["CERT_SCHEDULER"] = scheduler
+
+        # Run on startup (in background thread to not block app startup)
+        import threading
+        threading.Thread(target=run_cert_status_refresh, daemon=True).start()
+
+        log.info("Cert status scheduler started (daily at 6:00am)")
+    except ImportError:
+        log.warning("APScheduler not installed — cert refresh job disabled")
+    except Exception:
+        log.exception("Failed to start cert scheduler")
 
 
 if __name__ == "__main__":
