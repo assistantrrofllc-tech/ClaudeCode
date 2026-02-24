@@ -904,34 +904,49 @@ button { cursor: pointer; font-family: inherit; }
     }
 }
 
-/* ── Cert Badges ─────────────────────────────────────── */
+/* ── Cert Badges (icon style) ────────────────────────── */
 .cert-badge {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    gap: 3px;
     font-size: 10px;
     font-weight: 700;
-    width: 28px;
-    height: 20px;
-    border-radius: 4px;
+    padding: 3px 6px;
+    height: 24px;
+    border-radius: 6px;
     letter-spacing: -0.2px;
+    border: 1.5px solid transparent;
+}
+.cert-badge svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
 }
 .cert-badge--valid {
     background: var(--success-bg);
     color: var(--success);
+    border-color: var(--success);
 }
+.cert-badge--valid svg { stroke: var(--success); }
 .cert-badge--expiring {
     background: var(--warning-bg);
     color: var(--warning);
+    border-color: var(--warning);
 }
+.cert-badge--expiring svg { stroke: var(--warning); }
 .cert-badge--expired {
     background: var(--danger-bg);
     color: var(--danger);
+    border-color: var(--danger);
 }
+.cert-badge--expired svg { stroke: var(--danger); }
 .cert-badge--none {
     background: var(--bg-muted);
     color: var(--text-light);
+    border-color: transparent;
+    opacity: 0.45;
 }
+.cert-badge--none svg { stroke: var(--text-light); }
 
 /* ── Cert Splitter ───────────────────────────────────── */
 .splitter-grid {
