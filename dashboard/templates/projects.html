@@ -82,7 +82,7 @@
         <tbody>
             {% for p in projects %}
             <tr id="proj-row-{{ p.id }}" data-name="{{ p.name }}" data-code="{{ p.project_code or '' }}" data-city="{{ p.city or '' }}">
-                <td><strong>{{ p.name }}</strong></td>
+                <td><a href="/projects/{{ p.id }}"><strong>{{ p.name }}</strong></a></td>
                 <td class="text-muted">{{ p.project_code or '—' }}</td>
                 <td class="text-muted">{% if p.city %}{{ p.city }}{% if p.state %}, {{ p.state }}{% endif %}{% else %}—{% endif %}</td>
                 <td>

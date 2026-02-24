@@ -1254,6 +1254,62 @@ def projects_page():
         db.close()
 
 
+@dashboard_bp.route("/projects/<int:project_id>")
+def project_detail_page(project_id):
+    """Dedicated project detail page — financial stat sheet."""
+    db = get_db()
+    try:
+        project = db.execute(
+            """SELECT p.*,
+                      (SELECT COUNT(*) FROM receipts r WHERE r.project_id = p.id AND r.status NOT IN ('deleted','duplicate')) as receipt_count,
+                      (SELECT COALESCE(SUM(r.total), 0) FROM receipts r WHERE r.project_id = p.id AND r.status NOT IN ('deleted','duplicate')) as total_spend
+               FROM projects p WHERE p.id = ?""",
+            (project_id,),
+        ).fetchone()
+        if not project:
+            return "Project not found", 404
+
+        by_category = db.execute(
+            """SELECT COALESCE(c.name, 'Uncategorized') AS category_name,
+                      COUNT(r.id) AS receipt_count, COALESCE(SUM(r.total), 0) AS total
+               FROM receipts r LEFT JOIN categories c ON r.category_id = c.id
+               WHERE r.project_id = ? AND r.status NOT IN ('deleted','duplicate')
+               GROUP BY category_name ORDER BY total DESC""",
+            (project_id,),
+        ).fetchall()
+
+        by_employee = db.execute(
+            """SELECT e.id AS employee_id, COALESCE(e.full_name, e.first_name) AS employee_name,
+                      COUNT(r.id) AS receipt_count, COALESCE(SUM(r.total), 0) AS total
+               FROM receipts r JOIN employees e ON r.employee_id = e.id
+               WHERE r.project_id = ? AND r.status NOT IN ('deleted','duplicate')
+               GROUP BY e.id ORDER BY total DESC""",
+            (project_id,),
+        ).fetchall()
+
+        receipts = db.execute(
+            """SELECT r.id, r.vendor_name, r.total, r.purchase_date, r.status, r.image_path,
+                      COALESCE(e.full_name, e.first_name) AS employee_name,
+                      COALESCE(c.name, 'Uncategorized') AS category_name
+               FROM receipts r
+               JOIN employees e ON r.employee_id = e.id
+               LEFT JOIN categories c ON r.category_id = c.id
+               WHERE r.project_id = ? AND r.status NOT IN ('deleted','duplicate')
+               ORDER BY r.purchase_date DESC""",
+            (project_id,),
+        ).fetchall()
+
+        return _render_module(
+            "project_detail.html", "crewledger", "projects",
+            project=dict(project),
+            by_category=[dict(r) for r in by_category],
+            by_employee=[dict(r) for r in by_employee],
+            receipts=[dict(r) for r in receipts],
+        )
+    finally:
+        db.close()
+
+
 # ── Email Settings ──────────────────────────────────────
 
 

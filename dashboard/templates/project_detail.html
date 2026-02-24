@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}CrewLedger — {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/projects" style="color:var(--text-muted); font-size:14px; text-decoration:none;">&larr; Projects</a>
+</div>
+
+<!-- Project Header Card -->
+<div class="card" style="margin-bottom:20px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+        <div>
+            <h2 style="margin:0;">{{ project.name }}</h2>
+            {% if project.project_code %}<div class="text-muted" style="margin-top:4px;">{{ project.project_code }}</div>{% endif %}
+            {% if project.city or project.state %}
+            <div class="text-muted" style="margin-top:2px;">{{ project.city or '' }}{% if project.city and project.state %}, {% endif %}{{ project.state or '' }}</div>
+            {% endif %}
+            {% if project.start_date or project.end_date %}
+            <div class="text-muted" style="margin-top:2px; font-size:13px;">
+                {{ project.start_date or '?' }} &mdash; {{ project.end_date or 'ongoing' }}
+            </div>
+            {% endif %}
+            {% if project.notes %}<div class="text-muted" style="margin-top:6px; font-size:13px;">{{ project.notes }}</div>{% endif %}
+        </div>
+        <div>
+            {% if project.status == 'active' %}
+            <span class="badge badge--confirmed">Active</span>
+            {% elif project.status == 'on_hold' %}
+            <span class="badge badge--pending">On Hold</span>
+            {% else %}
+            <span class="badge badge--rejected">Completed</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Stat Cards -->
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-card__label">Total Spend</div>
+        <div class="stat-card__value">${{ "%.2f"|format(project.total_spend or 0) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card__label">Receipts</div>
+        <div class="stat-card__value">{{ project.receipt_count or 0 }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card__label">Avg Receipt</div>
+        <div class="stat-card__value">
+            {% if project.receipt_count %}
+            ${{ "%.2f"|format((project.total_spend or 0) / project.receipt_count) }}
+            {% else %}
+            $0.00
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Spend by Category -->
+{% if by_category %}
+<div class="card" style="margin-top:20px;">
+    <h3>Spend by Category</h3>
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Receipts</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in by_category %}
+                <tr>
+                    <td><strong>{{ c.category_name }}</strong></td>
+                    <td>{{ c.receipt_count }}</td>
+                    <td>${{ "%.2f"|format(c.total) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Spend by Employee -->
+{% if by_employee %}
+<div class="card" style="margin-top:20px;">
+    <h3>Spend by Employee</h3>
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Receipts</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in by_employee %}
+                <tr>
+                    <td><strong>{{ e.employee_name }}</strong></td>
+                    <td>{{ e.receipt_count }}</td>
+                    <td>${{ "%.2f"|format(e.total) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- All Receipts -->
+<div class="card" style="margin-top:20px;">
+    <h3>All Receipts</h3>
+    {% if receipts %}
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Employee</th>
+                    <th>Vendor</th>
+                    <th>Category</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in receipts %}
+                <tr onclick="openReceiptModal({{ r.id }})" style="cursor:pointer;">
+                    <td>{{ r.purchase_date or '—' }}</td>
+                    <td>{{ r.employee_name }}</td>
+                    <td>{{ r.vendor_name or '—' }}</td>
+                    <td>{{ r.category_name }}</td>
+                    <td>${{ "%.2f"|format(r.total or 0) }}</td>
+                    <td>
+                        {% if r.status == 'confirmed' %}
+                        <span class="badge badge--confirmed">Confirmed</span>
+                        {% elif r.status == 'pending' %}
+                        <span class="badge badge--pending">Pending</span>
+                        {% elif r.status == 'flagged' %}
+                        <span class="badge badge--flagged">Flagged</span>
+                        {% else %}
+                        <span class="badge">{{ r.status }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="text-align:center; padding:24px 0;">No receipts for this project yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var _receiptNavList = [{% for r in receipts %}{{ r.id }}{% if not loop.last %},{% endif %}{% endfor %}];
+</script>
+{% endblock %}
