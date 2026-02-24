@@ -163,15 +163,16 @@
 <!-- Cert Document Viewer Modal -->
 <div id="cert-doc-modal" class="modal" style="display:none;">
     <div class="modal-backdrop" onclick="closeCertModal()"></div>
-    <div class="modal-content">
+    <div class="modal-content" style="max-width:960px; height:90vh;">
         <button class="modal-close" onclick="closeCertModal()">&times;</button>
-        <div class="modal-body">
-            <div class="modal-image-wrap">
-                <img id="cert-doc-image" src="" alt="Certificate document">
+        <div style="padding:12px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
+            <div>
+                <strong id="cert-doc-title"></strong>
             </div>
-        </div>
-        <div class="modal-footer">
             <a id="cert-doc-download" href="#" download class="btn btn--primary btn--small">Download</a>
+        </div>
+        <div style="flex:1; min-height:0;">
+            <iframe id="cert-doc-frame" src="" style="width:100%; height:100%; border:none;"></iframe>
         </div>
     </div>
 </div>
@@ -210,7 +211,13 @@ function renderBadges() {
         const status = cert ? cert.status : 'none';
         var icon = CERT_ICONS[ct.slug] || '';
         var abbr = CERT_ABBR[ct.slug] || ct.slug.substring(0, 2).toUpperCase();
-        html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${status}" title="${ct.name}: ${status}">${icon}${abbr}</a>`;
+        if (status === 'none') {
+            html += `<span class="cert-badge cert-badge--none" title="${ct.name}: none">${icon}${abbr}</span>`;
+        } else if (cert && cert.document_path) {
+            html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${status}" title="${ct.name}: ${status}" onclick="event.preventDefault(); openCertDoc('${escHtml(cert.document_path)}', '${escHtml(ct.name)}')">${icon}${abbr}</a>`;
+        } else {
+            html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${status}" title="${ct.name}: ${status}">${icon}${abbr}</a>`;
+        }
     });
     container.innerHTML = html;
 }
@@ -238,7 +245,7 @@ function renderCertsTable() {
                            c.status === 'expiring' ? 'badge--pending' : 'badge--flagged';
         const statusLabel = c.status.charAt(0).toUpperCase() + c.status.slice(1);
         const docIcon = c.document_path
-            ? `<button class="row-action-btn" title="View document" onclick="event.stopPropagation(); openCertDoc('${escHtml(c.document_path)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>`
+            ? `<button class="row-action-btn" title="View document" onclick="event.stopPropagation(); openCertDoc('${escHtml(c.document_path)}', '${escHtml(c.cert_type_name)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>`
             : '<span style="color:var(--text-light);">—</span>';
 
         html += `<tr id="cert-${c.cert_type_slug}">
@@ -272,12 +279,13 @@ var CERT_ICONS = {
     'driver': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/></svg>',
     'bilingual': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 10"/><path d="M10 8l-5 10"/><path d="M2 14h8"/><path d="M15 4h6"/><path d="M18 4v8"/><path d="M15 8c1 2 3 4 6 4"/><path d="M21 8c-1 2-3 4-6 4"/></svg>',
     'crew-lead': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,17 5.5,21 7.5,14 2,9 9,9"/></svg>',
-    'card-holder': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>'
+    'card-holder': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>',
+    'aerial-work-platform': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V11l7-4 7 4v10"/><path d="M9 21v-4h6v4"/><path d="M10 11h4"/></svg>'
 };
 var CERT_ABBR = {
     'osha-10': 'O10', 'osha-30': 'O30', 'first-aid-cpr': 'FA',
-    'fall-protection': 'FP', 'ext-reach-forklift': 'FK', 'driver': 'DR',
-    'bilingual': 'BL', 'crew-lead': 'CL', 'card-holder': 'CH'
+    'fall-protection': 'FP', 'ext-reach-forklift': 'FK', 'aerial-work-platform': 'AW',
+    'driver': 'DR', 'bilingual': 'BL', 'crew-lead': 'CL', 'card-holder': 'CH'
 };
 
 function escHtml(str) {
@@ -426,18 +434,21 @@ async function deleteCert(certId, typeName) {
 }
 
 // ── Cert Document Modal ──
-function openCertDoc(docPath) {
+function openCertDoc(docPath, certName) {
     const modal = document.getElementById('cert-doc-modal');
-    const img = document.getElementById('cert-doc-image');
+    const frame = document.getElementById('cert-doc-frame');
     const dl = document.getElementById('cert-doc-download');
-    img.src = docPath;
-    dl.href = docPath;
+    const title = document.getElementById('cert-doc-title');
+    const url = '/certs/file/' + docPath.replace('cert_files/', '');
+    frame.src = url;
+    dl.href = url;
+    title.textContent = (certName || 'Certificate') + ' — ' + document.getElementById('emp-name').textContent;
     modal.style.display = 'flex';
 }
 function closeCertModal() {
     const modal = document.getElementById('cert-doc-modal');
     modal.style.display = 'none';
-    document.getElementById('cert-doc-image').src = '';
+    document.getElementById('cert-doc-frame').src = '';
 }
 
 // ── Notes ──

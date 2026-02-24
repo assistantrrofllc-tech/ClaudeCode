@@ -224,10 +224,11 @@ INSERT OR IGNORE INTO certification_types (name, slug, sort_order) VALUES
     ('First Aid / CPR',        'first-aid-cpr',     3),
     ('Fall Protection',        'fall-protection',   4),
     ('Extended Reach Forklift','ext-reach-forklift', 5),
-    ('Driver',                 'driver',            6),
-    ('Bilingual',              'bilingual',         7),
-    ('Crew Lead',              'crew-lead',         8),
-    ('Card Holder',            'card-holder',       9);
+    ('Aerial Work Platform',   'aerial-work-platform', 6),
+    ('Driver',                 'driver',            7),
+    ('Bilingual',              'bilingual',         8),
+    ('Crew Lead',              'crew-lead',         9),
+    ('Card Holder',            'card-holder',       10);
 
 -- ============================================================
 -- CERTIFICATIONS

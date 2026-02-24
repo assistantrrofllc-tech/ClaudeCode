@@ -101,6 +101,27 @@ def serve_receipt_image(filename):
 # ── Cert Document Serving ────────────────────────────────────
 
 
+@dashboard_bp.route("/certs/file/<filename>")
+def serve_cert_file(filename):
+    """Serve a cert PDF from the cert_files directory.
+
+    Path traversal protection: filename must not contain path separators.
+    Files stored at storage/certifications/cert_files/<filename>.
+    """
+    if "/" in filename or "\\" in filename or ".." in filename:
+        abort(404)
+
+    storage_dir = (Path(CERT_STORAGE_PATH) / "cert_files").resolve()
+    file_path = (storage_dir / filename).resolve()
+
+    if not str(file_path).startswith(str(storage_dir)):
+        abort(404)
+    if not file_path.exists():
+        abort(404)
+
+    return send_from_directory(str(storage_dir), filename, mimetype="application/pdf")
+
+
 @dashboard_bp.route("/certifications/document/<employee_uuid>/<filename>")
 def serve_cert_document(employee_uuid, filename):
     """Serve a cert document from local storage.
