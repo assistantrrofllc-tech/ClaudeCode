@@ -51,18 +51,26 @@ EMPLOYEE_MAP = {
     "saul-martinez": 11,
     "wuilson-lopez": 8,
     "zachary-robbins": 24,
-    "jakob-robbins": None,  # not in system yet
+    "jakob-robbins": 36,
+    "justin-robbins": 37,
+    "steven-sosa": 38,
+    "robert-cordero": 1,
 }
 
 # ── File cert-type slug → DB cert_type_id ──
 # Maps the naming convention in cert files to the DB certification_types table.
 CERT_TYPE_MAP = {
-    "extended-reach-forklift": 5,          # ext-reach-forklift
-    "fall-protection-comp-person": 4,      # fall-protection
-    "ashi-cpr-first-aid-aed": 3,           # first-aid-cpr
-    "aerial-work-platform-all-terrain": 10, # aerial-work-platform
-    "cpr-first-aid-aed": 3,               # first-aid-cpr
-    "fall-protection": 4,                  # fall-protection
+    "extended-reach-forklift": 5,              # ext-reach-forklift
+    "fall-protection-comp-person": 4,          # fall-protection
+    "ashi-cpr-first-aid-aed": 3,               # first-aid-cpr
+    "aerial-work-platform-all-terrain": 10,    # aerial-work-platform
+    "aerial-work-platform-oct4-2024": 10,      # aerial-work-platform (dated)
+    "cpr-first-aid-aed": 3,                   # first-aid-cpr
+    "fall-protection": 4,                      # fall-protection
+    "osha-10-hour-construction": 1,            # osha-10
+    "osha-30-hour-construction": 2,            # osha-30
+    "sss-basic-rigging": 11,                   # basic-rigging
+    "rigger-signal-person-basic": 12,          # rigger-signal-person
 }
 
 # Files to skip (don't follow naming convention)

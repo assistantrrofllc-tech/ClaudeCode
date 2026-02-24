@@ -230,7 +230,9 @@ INSERT OR IGNORE INTO certification_types (name, slug, sort_order) VALUES
     ('Driver',                 'driver',            7),
     ('Bilingual',              'bilingual',         8),
     ('Crew Lead',              'crew-lead',         9),
-    ('Card Holder',            'card-holder',       10);
+    ('Card Holder',            'card-holder',       10),
+    ('Basic Rigging',          'basic-rigging',     11),
+    ('Rigger/Signal Person',   'rigger-signal-person', 12);
 
 -- ============================================================
 -- CERTIFICATIONS
