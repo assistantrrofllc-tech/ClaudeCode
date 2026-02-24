@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}CrewCert — Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>CrewCert Dashboard</h1>
+</div>
+
+<!-- Summary Stats -->
+<div class="crew-stats" id="cert-stats">
+    <div class="crew-stat">
+        <div class="crew-stat__value" id="stat-total">--</div>
+        <div class="crew-stat__label">Total Crew</div>
+    </div>
+    <div class="crew-stat">
+        <div class="crew-stat__value" id="stat-active">--</div>
+        <div class="crew-stat__label">Active</div>
+    </div>
+    <div class="crew-stat">
+        <div class="crew-stat__value crew-stat__value--warning" id="stat-expiring">--</div>
+        <div class="crew-stat__label">Expiring Soon</div>
+    </div>
+    <div class="crew-stat">
+        <div class="crew-stat__value crew-stat__value--danger" id="stat-expired">--</div>
+        <div class="crew-stat__label">Expired</div>
+    </div>
+</div>
+
+<!-- Cert Alerts -->
+<section class="section">
+    <div class="section-header">
+        <h2>Certification Alerts</h2>
+        <a href="/crew" class="link">View all crew</a>
+    </div>
+    <div id="alerts-loading" class="loading">Loading alerts...</div>
+    <div id="alerts-empty" class="card" style="display:none; text-align:center; padding:32px 20px;">
+        <p style="color:var(--text-muted); font-size:15px;">All certifications are up to date.</p>
+    </div>
+    <div id="alerts-list" class="receipt-list" style="display:none;"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', loadCertDashboard);
+
+async function loadCertDashboard() {
+    try {
+        const resp = await fetch('/api/crew/employees');
+        const employees = await resp.json();
+        renderStats(employees);
+        renderAlerts(employees);
+    } catch (err) {
+        document.getElementById('alerts-loading').textContent = 'Failed to load data.';
+    }
+}
+
+function renderStats(employees) {
+    document.getElementById('stat-total').textContent = employees.length;
+    document.getElementById('stat-active').textContent = employees.filter(e => e.is_active).length;
+    document.getElementById('stat-expiring').textContent = employees.filter(e => e.has_expiring).length;
+    document.getElementById('stat-expired').textContent = employees.filter(e => e.has_expired).length;
+}
+
+function renderAlerts(employees) {
+    const loading = document.getElementById('alerts-loading');
+    const empty = document.getElementById('alerts-empty');
+    const list = document.getElementById('alerts-list');
+
+    loading.style.display = 'none';
+
+    // Collect employees with expired or expiring certs
+    const alerts = [];
+    employees.forEach(emp => {
+        if (!emp.certs) return;
+        emp.certs.forEach(c => {
+            if (c.status === 'expired' || c.status === 'expiring') {
+                alerts.push({
+                    employee_id: emp.id,
+                    name: emp.full_name || emp.first_name,
+                    cert_name: c.name,
+                    cert_status: c.status,
+                });
+            }
+        });
+    });
+
+    if (alerts.length === 0) {
+        empty.style.display = 'block';
+        return;
+    }
+
+    list.style.display = 'block';
+    let html = '';
+    alerts.forEach(a => {
+        const statusClass = a.cert_status === 'expired' ? 'badge--flagged' : 'badge--pending';
+        const statusLabel = a.cert_status === 'expired' ? 'Expired' : 'Expiring';
+        html += `
+        <div class="receipt-row" onclick="window.location='/crew/${a.employee_id}'" style="cursor:pointer;">
+            <div class="receipt-row-main">
+                <div class="receipt-info">
+                    <div class="receipt-vendor">${escHtml(a.name)}</div>
+                    <div class="receipt-meta">${escHtml(a.cert_name)}</div>
+                </div>
+                <div class="receipt-right">
+                    <span class="badge ${statusClass}">${statusLabel}</span>
+                </div>
+            </div>
+        </div>`;
+    });
+    list.innerHTML = html;
+}
+
+function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

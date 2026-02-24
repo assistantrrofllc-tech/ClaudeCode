@@ -41,34 +41,77 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button { cursor: pointer; font-family: inherit; }
 
-/* ── Top Bar ──────────────────────────────────────────── */
-.topbar {
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    height: 52px;
-    padding: 0 16px;
+/* ── Layer 1 — Module Selector Bar ───────────────────── */
+.module-bar {
+    background: var(--primary);
     position: sticky;
     top: 0;
     z-index: 100;
 }
-.topbar__brand a {
+.module-bar__inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    height: 48px;
+    padding: 0 16px;
+}
+.module-bar__brand {
     font-weight: 700;
     font-size: 17px;
-    color: var(--primary);
+    color: #fff;
     letter-spacing: -0.3px;
+    margin-right: 24px;
+    white-space: nowrap;
 }
-.topbar__brand a:hover { text-decoration: none; }
-.topbar__tabs {
+.module-bar__tabs {
     display: flex;
-    margin-left: 24px;
-    height: 100%;
+    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
 }
-.topbar__tab {
+.module-bar__tabs::-webkit-scrollbar { display: none; }
+.module-bar__tab {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.65);
+    text-decoration: none;
+    border-radius: var(--radius-pill);
+    white-space: nowrap;
+    transition: color 0.15s, background 0.15s;
+    min-height: 44px;
+}
+.module-bar__tab:hover { color: #fff; background: rgba(255,255,255,0.1); text-decoration: none; }
+.module-bar__tab--active { color: #fff; background: rgba(255,255,255,0.18); font-weight: 600; }
+.module-bar__tab--disabled {
+    color: rgba(255,255,255,0.25);
+    cursor: default;
+}
+.module-bar__tab--disabled:hover { background: none; color: rgba(255,255,255,0.25); }
+
+/* ── Layer 2 — Module Sub-Nav ────────────────────────── */
+.subnav {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+}
+.subnav__inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    height: 44px;
+    padding: 0 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.subnav__inner::-webkit-scrollbar { display: none; }
+.subnav__tab {
+    display: inline-flex;
+    align-items: center;
     padding: 0 16px;
     height: 100%;
     font-size: 14px;
@@ -76,27 +119,12 @@ button { cursor: pointer; font-family: inherit; }
     color: var(--text-muted);
     text-decoration: none;
     border-bottom: 2px solid transparent;
+    white-space: nowrap;
     transition: color 0.15s, border-color 0.15s;
+    min-height: 44px;
 }
-.topbar__tab:hover { color: var(--text); text-decoration: none; }
-.topbar__tab--active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-.topbar__tab svg { width: 16px; height: 16px; opacity: 0.6; }
-.topbar__tab--active svg { opacity: 1; stroke: var(--accent); }
-.topbar__actions { margin-left: auto; display: flex; align-items: center; }
-.topbar__icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    color: var(--text-muted);
-    transition: background 0.15s, color 0.15s;
-}
-.topbar__icon:hover { background: var(--bg-muted); color: var(--text); text-decoration: none; }
-.topbar__icon--active { color: var(--accent); }
-
-/* ── (Tab bar merged into topbar) ─────────────────────── */
+.subnav__tab:hover { color: var(--text); text-decoration: none; }
+.subnav__tab--active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
 /* ── Main Layout ───────────────────────────────────────── */
 .main {
@@ -691,7 +719,7 @@ button { cursor: pointer; font-family: inherit; }
 
 @media print {
     body { background: #fff; }
-    .topbar, .filter-bar, .sort-row, .header-actions, .modal, .totals-bar { display: none !important; }
+    .module-bar, .subnav, .filter-bar, .sort-row, .header-actions, .modal, .totals-bar { display: none !important; }
     .main { max-width: 100%; padding: 0; }
     .print-only { display: block !important; }
     .card, .ledger-card { display: none !important; }
@@ -742,7 +770,7 @@ button { cursor: pointer; font-family: inherit; }
 
 @media (min-width: 768px) {
     .main { padding: 24px 24px; }
-    .topbar { padding: 0 24px; }
+    .module-bar__inner, .subnav__inner { padding: 0 24px; }
 }
 
 @media (min-width: 1100px) {

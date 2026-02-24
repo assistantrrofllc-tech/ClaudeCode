@@ -35,11 +35,23 @@ def create_app() -> Flask:
     app.secret_key = SECRET_KEY
 
     # Cache-busting version for static files (changes on each deploy)
-    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "11")
+    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "12")
+
+    # CrewOS module definitions — available to all templates
+    CREWOS_MODULES = [
+        {"id": "crewledger", "label": "CrewLedger", "href": "/", "enabled": True},
+        {"id": "crewcert", "label": "CrewCert", "href": "/crewcert", "enabled": True},
+        {"id": "crewschedule", "label": "CrewSchedule", "href": "#", "enabled": False},
+        {"id": "crewasset", "label": "CrewAsset", "href": "#", "enabled": False},
+        {"id": "crewinventory", "label": "CrewInventory", "href": "#", "enabled": False},
+    ]
 
     @app.context_processor
-    def inject_cache_version():
-        return {"cache_version": app.config["CACHE_VERSION"]}
+    def inject_globals():
+        return {
+            "cache_version": app.config["CACHE_VERSION"],
+            "crewos_modules": CREWOS_MODULES,
+        }
 
     # Register blueprints
     app.register_blueprint(twilio_bp)

@@ -27,11 +27,30 @@ log = logging.getLogger(__name__)
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
-# Module tabs — extend this list when adding new modules
-MODULE_TABS = [
-    {"id": "ledger", "label": "Ledger", "href": "/ledger"},
-    {"id": "crew", "label": "Crew", "href": "/crew"},
-]
+# Per-module sub-navigation (Layer 2)
+MODULE_NAVS = {
+    "crewledger": [
+        {"id": "dashboard", "label": "Dashboard", "href": "/"},
+        {"id": "ledger", "label": "Ledger", "href": "/ledger"},
+        {"id": "projects", "label": "Projects", "href": "/projects"},
+        {"id": "settings", "label": "Settings", "href": "/settings"},
+    ],
+    "crewcert": [
+        {"id": "dashboard", "label": "Dashboard", "href": "/crewcert"},
+        {"id": "employees", "label": "Employees", "href": "/crew"},
+    ],
+}
+
+
+def _render_module(template, active_module, active_subnav="", **kwargs):
+    """Render a template with module navigation context."""
+    return render_template(
+        template,
+        active_module=active_module,
+        active_subnav=active_subnav,
+        module_nav=MODULE_NAVS.get(active_module, []),
+        **kwargs,
+    )
 
 
 # ── Pages ────────────────────────────────────────────────────
@@ -47,7 +66,7 @@ def home():
         recent = _get_recent_receipts(db, limit=10)
         unknown = _get_unknown_contacts(db, limit=10)
         can_edit = check_permission(None, "crewledger", "edit")
-        return render_template("index.html", stats=stats, flagged=flagged, recent=recent, unknown=unknown, can_edit=can_edit)
+        return _render_module("index.html", "crewledger", "dashboard", stats=stats, flagged=flagged, recent=recent, unknown=unknown, can_edit=can_edit)
     finally:
         db.close()
 
@@ -249,7 +268,7 @@ def employees_page():
                    (SELECT MAX(r.created_at) FROM receipts r WHERE r.employee_id = e.id) as last_submission
             FROM employees e ORDER BY e.first_name
         """).fetchall()
-        return render_template("employees.html", employees=[dict(e) for e in employees])
+        return _render_module("employees.html", "crewledger", "", employees=[dict(e) for e in employees])
     finally:
         db.close()
 
@@ -612,17 +631,23 @@ def ledger_page():
         projects = db.execute("SELECT id, name FROM projects WHERE status = 'active' ORDER BY name").fetchall()
         categories = db.execute("SELECT id, name FROM categories ORDER BY name").fetchall()
         can_edit = check_permission(None, "crewledger", "edit")
-        return render_template(
-            "ledger.html",
+        return _render_module(
+            "ledger.html", "crewledger", "ledger",
             employees=[dict(e) for e in employees],
             projects=[dict(p) for p in projects],
             categories=[dict(c) for c in categories],
-            tabs=MODULE_TABS,
-            active_tab="ledger",
             can_edit=can_edit,
         )
     finally:
         db.close()
+
+
+@dashboard_bp.route("/crewcert")
+def crewcert_home():
+    """CrewCert module home — certification dashboard with summary and alerts."""
+    if not check_permission(None, "crewcert", "view"):
+        abort(403)
+    return _render_module("crewcert_dashboard.html", "crewcert", "dashboard")
 
 
 @dashboard_bp.route("/crew")
@@ -630,11 +655,7 @@ def crew_page():
     """CrewCert module — employee roster and certification tracking."""
     if not check_permission(None, "crewcert", "view"):
         abort(403)
-    return render_template(
-        "crew.html",
-        tabs=MODULE_TABS,
-        active_tab="crew",
-    )
+    return _render_module("crew.html", "crewcert", "employees")
 
 
 @dashboard_bp.route("/crew/<int:employee_id>")
@@ -650,12 +671,10 @@ def crew_detail_page(employee_id):
             "SELECT * FROM certification_types WHERE is_active = 1 ORDER BY sort_order"
         ).fetchall()
 
-        return render_template(
-            "crew_detail.html",
+        return _render_module(
+            "crew_detail.html", "crewcert", "employees",
             employee=dict(emp),
             cert_types=[dict(ct) for ct in cert_types],
-            tabs=MODULE_TABS,
-            active_tab="crew",
         )
     finally:
         db.close()
@@ -884,8 +903,8 @@ def projects_page():
                    (SELECT COALESCE(SUM(r.total), 0) FROM receipts r WHERE r.project_id = p.id) as total_spend
             FROM projects p ORDER BY p.name
         """).fetchall()
-        return render_template(
-            "projects.html",
+        return _render_module(
+            "projects.html", "crewledger", "projects",
             projects=[dict(p) for p in projects],
         )
     finally:
@@ -904,8 +923,8 @@ def settings_page():
         settings = {r["key"]: r["value"] for r in rows}
         employees = db.execute("SELECT id, first_name FROM employees ORDER BY first_name").fetchall()
         projects = db.execute("SELECT id, name FROM projects WHERE status = 'active' ORDER BY name").fetchall()
-        return render_template(
-            "settings.html",
+        return _render_module(
+            "settings.html", "crewledger", "settings",
             settings=settings,
             employees=[dict(e) for e in employees],
             projects=[dict(p) for p in projects],
