@@ -10,6 +10,26 @@
     </div>
 </div>
 
+<!-- Summary Stats -->
+<div class="crew-stats">
+    <div class="crew-stat">
+        <div class="crew-stat__value" id="stat-total">--</div>
+        <div class="crew-stat__label">Total Crew</div>
+    </div>
+    <div class="crew-stat">
+        <div class="crew-stat__value" id="stat-active">--</div>
+        <div class="crew-stat__label">Active</div>
+    </div>
+    <div class="crew-stat">
+        <div class="crew-stat__value crew-stat__value--warning" id="stat-expiring">--</div>
+        <div class="crew-stat__label">Expiring</div>
+    </div>
+    <div class="crew-stat">
+        <div class="crew-stat__value crew-stat__value--danger" id="stat-expired">--</div>
+        <div class="crew-stat__label">Expired</div>
+    </div>
+</div>
+
 <!-- Add Employee Form (hidden by default) -->
 <div id="add-employee-form" class="card" style="display:none; margin-bottom: 20px;">
     <h3>Add Employee</h3>
@@ -68,7 +88,7 @@
 <div id="crew-empty" class="card" style="display:none; text-align:center; padding:48px 20px;">
     <p style="color:var(--text-muted); font-size:16px;">No employees found. Add your first crew member above.</p>
 </div>
-<div id="crew-list" class="card crew-list-card" style="display:none;"></div>
+<div id="crew-grid" class="crew-grid" style="display:none;"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -91,18 +111,19 @@ async function loadCrewList() {
 function renderCrewList(employees) {
     const loading = document.getElementById('crew-loading');
     const empty = document.getElementById('crew-empty');
-    const list = document.getElementById('crew-list');
+    const grid = document.getElementById('crew-grid');
 
     loading.style.display = 'none';
+    updateStats(employees);
 
     if (employees.length === 0) {
         empty.style.display = 'block';
-        list.style.display = 'none';
+        grid.style.display = 'none';
         return;
     }
 
     empty.style.display = 'none';
-    list.style.display = 'block';
+    grid.style.display = 'grid';
 
     let html = '';
     employees.forEach(emp => {
@@ -112,6 +133,18 @@ function renderCrewList(employees) {
         const crewRole = [emp.crew, emp.role].filter(Boolean).join(' \u00b7 ');
         const statusClass = emp.is_active ? 'badge--confirmed' : 'badge--rejected';
         const statusLabel = emp.is_active ? 'Active' : 'Inactive';
+        const initials = getInitials(name);
+        const isPlaceholder = phone.startsWith('placeholder') || phone.startsWith('+1placeholder');
+
+        let contactHtml = '';
+        if (phone && !isPlaceholder) {
+            contactHtml += `<a href="tel:${phone}" class="crew-row__phone" onclick="event.stopPropagation()">${formatPhone(phone)}</a>`;
+        } else {
+            contactHtml += `<span class="crew-card__add-phone" title="Add phone number">+ phone</span>`;
+        }
+        if (email) {
+            contactHtml += `<span>${escHtml(email)}</span>`;
+        }
 
         let badgesHtml = '';
         if (emp.certs) {
@@ -121,30 +154,43 @@ function renderCrewList(employees) {
         }
 
         html += `
-        <div class="crew-row" onclick="window.location='/crew/${emp.id}'"
+        <div class="crew-card" onclick="window.location='/crew/${emp.id}'"
              data-name="${name.toLowerCase()}"
              data-crew="${(emp.crew || '').toLowerCase()}"
              data-active="${emp.is_active ? '1' : '0'}"
              data-expired="${emp.has_expired ? '1' : '0'}"
              data-expiring="${emp.has_expiring ? '1' : '0'}">
-            <div class="crew-row__main">
-                <div class="crew-row__info">
-                    <div class="crew-row__name">${escHtml(name)}</div>
-                    <div class="crew-row__meta">
-                        ${phone ? `<a href="tel:${phone}" class="crew-row__phone" onclick="event.stopPropagation()">${formatPhone(phone)}</a>` : ''}
-                        ${email ? `<span class="crew-row__email">${escHtml(email)}</span>` : ''}
-                    </div>
+            <div class="crew-card__header">
+                <div class="crew-card__avatar">${initials}</div>
+                <div class="crew-card__info">
+                    <div class="crew-card__name">${escHtml(name)}</div>
+                    ${crewRole ? `<div class="crew-card__role">${escHtml(crewRole)}</div>` : ''}
                 </div>
-                <div class="crew-row__right">
-                    ${crewRole ? `<span class="crew-row__crew">${escHtml(crewRole)}</span>` : ''}
+                <div class="crew-card__status">
                     <span class="badge ${statusClass}">${statusLabel}</span>
                 </div>
             </div>
-            <div class="crew-row__badges">${badgesHtml}</div>
+            <div class="crew-card__contact">${contactHtml}</div>
+            <div class="crew-card__badges">${badgesHtml}</div>
         </div>`;
     });
 
-    list.innerHTML = html;
+    grid.innerHTML = html;
+}
+
+function getInitials(name) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
+function updateStats(employees) {
+    document.getElementById('stat-total').textContent = employees.length;
+    document.getElementById('stat-active').textContent = employees.filter(e => e.is_active).length;
+    document.getElementById('stat-expiring').textContent = employees.filter(e => e.has_expiring).length;
+    document.getElementById('stat-expired').textContent = employees.filter(e => e.has_expired).length;
 }
 
 // SVG icons for each cert type — small inline pictograms
@@ -189,16 +235,16 @@ function escHtml(str) {
 
 function filterCrewList() {
     const query = document.getElementById('crew-search').value.toLowerCase();
-    const rows = document.querySelectorAll('.crew-row');
-    rows.forEach(row => {
-        const name = row.dataset.name;
-        const crew = row.dataset.crew;
+    const cards = document.querySelectorAll('.crew-card');
+    cards.forEach(card => {
+        const name = card.dataset.name;
+        const crew = card.dataset.crew;
         const matchesSearch = !query || name.includes(query) || crew.includes(query);
         let matchesFilter = true;
-        if (currentFilter === 'active') matchesFilter = row.dataset.active === '1';
-        else if (currentFilter === 'expired') matchesFilter = row.dataset.expired === '1';
-        else if (currentFilter === 'expiring') matchesFilter = row.dataset.expiring === '1';
-        row.style.display = (matchesSearch && matchesFilter) ? '' : 'none';
+        if (currentFilter === 'active') matchesFilter = card.dataset.active === '1';
+        else if (currentFilter === 'expired') matchesFilter = card.dataset.expired === '1';
+        else if (currentFilter === 'expiring') matchesFilter = card.dataset.expiring === '1';
+        card.style.display = (matchesSearch && matchesFilter) ? '' : 'none';
     });
 }
 

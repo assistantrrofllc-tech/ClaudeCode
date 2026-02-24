@@ -954,7 +954,7 @@ def test_settings_page_shows_projects():
     client = get_test_client()
     resp = client.get("/settings")
     assert resp.status_code == 200
-    assert b"Projects" in resp.data
+    assert b"Project Management" in resp.data
     assert b"Sparrow" in resp.data
     assert b"Employee Management" in resp.data
 
