@@ -128,6 +128,31 @@
             background: #fee2e2;
             color: #991b1b;
         }
+        .cert-row__view {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+            padding: 6px 14px;
+            border-radius: 8px;
+            background: #f0f2f5;
+            color: #1e3a5f;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid #e5e7eb;
+            transition: background 0.15s;
+        }
+        .cert-row__view:active {
+            background: #e5e7eb;
+        }
+        .cert-row__no-doc {
+            display: inline-block;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #9ca3af;
+            font-style: italic;
+        }
         .verify-footer {
             padding: 16px 24px;
             border-top: 1px solid #e5e7eb;
@@ -195,6 +220,13 @@
                 {% elif cert.status == 'expired' %}
                 <span class="cert-row__status cert-row__status--expired">Expired</span>
                 {% endif %}
+                <div>
+                {% if cert.has_document %}
+                    <a class="cert-row__view" href="/crew/verify/{{ token }}/cert/{{ cert.id }}" target="_blank">&#128196; View Certificate</a>
+                {% else %}
+                    <span class="cert-row__no-doc">No document on file</span>
+                {% endif %}
+                </div>
             </div>
             {% endfor %}
             {% else %}

@@ -755,7 +755,7 @@ def public_verify(token):
 
         # Get active certs
         certs = db.execute("""
-            SELECT ct.name as cert_name, c.issued_at, c.expires_at
+            SELECT c.id, ct.name as cert_name, c.issued_at, c.expires_at, c.document_path
             FROM certifications c
             JOIN certification_types ct ON c.cert_type_id = ct.id
             WHERE c.employee_id = ? AND c.is_active = 1
@@ -765,11 +765,17 @@ def public_verify(token):
         cert_list = []
         for c in certs:
             status = calculate_cert_status(c["expires_at"])
+            has_doc = bool(c["document_path"])
+            if has_doc:
+                doc_full = Path(CERT_STORAGE_PATH) / c["document_path"]
+                has_doc = doc_full.exists()
             cert_list.append({
+                "id": c["id"],
                 "name": c["cert_name"],
                 "issued_at": c["issued_at"],
                 "expires_at": c["expires_at"],
                 "status": status,
+                "has_document": has_doc,
             })
 
         return render_template(
@@ -777,8 +783,74 @@ def public_verify(token):
             employee_name=emp["full_name"] or emp["first_name"],
             employee_photo=emp["photo"],
             certs=cert_list,
+            token=token,
             verified_at=datetime.now().strftime("%b %d, %Y %I:%M%p"),
         )
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/crew/verify/<token>/cert/<int:cert_id>")
+def public_verify_cert(token, cert_id):
+    """Serve a cert document publicly — scoped to the employee's token.
+
+    No login required. Token must belong to an active employee.
+    cert_id must belong to that employee. Rate limited same as verify page.
+    """
+    import time
+
+    # Rate limiting: shared with verify page (30 req/hr/token)
+    now = time.time()
+    window = _scan_rate_limit.get(token, [])
+    window = [t for t in window if now - t < 3600]
+    if len(window) >= 30:
+        return render_template("verify_rate_limited.html"), 429
+    window.append(now)
+    _scan_rate_limit[token] = window
+
+    db = get_db()
+    try:
+        emp = db.execute(
+            "SELECT id, is_active, employee_uuid FROM employees WHERE public_token = ?",
+            (token,),
+        ).fetchone()
+
+        if not emp:
+            return render_template("verify_invalid.html"), 404
+        if not emp["is_active"]:
+            return render_template("verify_inactive.html"), 200
+
+        # Cert must belong to this employee
+        cert = db.execute(
+            "SELECT id, document_path FROM certifications WHERE id = ? AND employee_id = ? AND is_active = 1",
+            (cert_id, emp["id"]),
+        ).fetchone()
+
+        if not cert:
+            abort(404)
+
+        # Log the document view
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        if ip and "," in ip:
+            ip = ip.split(",")[0].strip()
+        ua = request.headers.get("User-Agent", "")[:200]
+        db.execute(
+            "INSERT INTO qr_scan_log (employee_id, ip_address, user_agent) VALUES (?, ?, ?)",
+            (emp["id"], ip, ua),
+        )
+        db.commit()
+
+        # Check document exists
+        if not cert["document_path"]:
+            return render_template("verify_no_document.html"), 200
+
+        doc_path = (Path(CERT_STORAGE_PATH) / cert["document_path"]).resolve()
+        if not str(doc_path).startswith(str(Path(CERT_STORAGE_PATH).resolve())):
+            abort(404)
+        if not doc_path.exists():
+            return render_template("verify_no_document.html"), 200
+
+        return send_from_directory(str(doc_path.parent), doc_path.name)
     finally:
         db.close()
 
