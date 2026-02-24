@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% set active_page = "crew" %}
+{% block title %}CrewCert — Crew{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Crew</h1>
+    <div class="header-actions">
+        <button class="btn btn--primary" onclick="showAddEmployeeForm()">+ Add Employee</button>
+    </div>
+</div>
+
+<!-- Add Employee Form (hidden by default) -->
+<div id="add-employee-form" class="card" style="display:none; margin-bottom: 20px;">
+    <h3>Add Employee</h3>
+    <div id="add-emp-error" class="error-msg" style="display:none;"></div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>First Name *</label>
+            <input type="text" id="emp-first-name" placeholder="First name">
+        </div>
+        <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="emp-full-name" placeholder="Full name">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Phone *</label>
+            <input type="tel" id="emp-phone" placeholder="(555) 123-4567">
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="emp-email" placeholder="email@example.com">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Crew</label>
+            <input type="text" id="emp-crew" placeholder="Crew name">
+        </div>
+        <div class="form-group">
+            <label>Role</label>
+            <input type="text" id="emp-role" placeholder="Role / title">
+        </div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn btn--primary" onclick="submitAddEmployee()">Save</button>
+        <button class="btn btn--secondary" onclick="hideAddEmployeeForm()">Cancel</button>
+    </div>
+</div>
+
+<!-- Search & Filter -->
+<div class="crew-filters">
+    <div class="search-bar">
+        <input type="text" id="crew-search" placeholder="Search by name or crew..." oninput="filterCrewList()">
+    </div>
+    <div class="crew-filter-pills">
+        <button class="filter-btn active" data-filter="all" onclick="setCrewFilter('all', this)">All</button>
+        <button class="filter-btn" data-filter="active" onclick="setCrewFilter('active', this)">Active</button>
+        <button class="filter-btn" data-filter="expired" onclick="setCrewFilter('expired', this)">Has Expired</button>
+        <button class="filter-btn" data-filter="expiring" onclick="setCrewFilter('expiring', this)">Expiring Soon</button>
+    </div>
+</div>
+
+<!-- Employee List -->
+<div id="crew-loading" class="loading">Loading crew roster...</div>
+<div id="crew-empty" class="card" style="display:none; text-align:center; padding:48px 20px;">
+    <p style="color:var(--text-muted); font-size:16px;">No employees found. Add your first crew member above.</p>
+</div>
+<div id="crew-list" class="card crew-list-card" style="display:none;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let crewData = [];
+let currentFilter = 'all';
+
+document.addEventListener('DOMContentLoaded', loadCrewList);
+
+async function loadCrewList() {
+    try {
+        const resp = await fetch('/api/crew/employees');
+        crewData = await resp.json();
+        renderCrewList(crewData);
+    } catch (err) {
+        document.getElementById('crew-loading').textContent = 'Failed to load crew data.';
+    }
+}
+
+function renderCrewList(employees) {
+    const loading = document.getElementById('crew-loading');
+    const empty = document.getElementById('crew-empty');
+    const list = document.getElementById('crew-list');
+
+    loading.style.display = 'none';
+
+    if (employees.length === 0) {
+        empty.style.display = 'block';
+        list.style.display = 'none';
+        return;
+    }
+
+    empty.style.display = 'none';
+    list.style.display = 'block';
+
+    let html = '';
+    employees.forEach(emp => {
+        const name = emp.full_name || emp.first_name;
+        const phone = emp.phone_number || '';
+        const email = emp.email || '';
+        const crewRole = [emp.crew, emp.role].filter(Boolean).join(' \u00b7 ');
+        const statusClass = emp.is_active ? 'badge--confirmed' : 'badge--rejected';
+        const statusLabel = emp.is_active ? 'Active' : 'Inactive';
+
+        let badgesHtml = '';
+        if (emp.certs) {
+            emp.certs.forEach(c => {
+                const colorClass = 'cert-badge--' + c.status;
+                const title = c.name + ': ' + c.status;
+                // Short abbreviation for the badge
+                const abbr = certAbbr(c.slug);
+                badgesHtml += `<span class="cert-badge ${colorClass}" title="${title}">${abbr}</span>`;
+            });
+        }
+
+        html += `
+        <div class="crew-row" onclick="window.location='/crew/${emp.id}'"
+             data-name="${name.toLowerCase()}"
+             data-crew="${(emp.crew || '').toLowerCase()}"
+             data-active="${emp.is_active ? '1' : '0'}"
+             data-expired="${emp.has_expired ? '1' : '0'}"
+             data-expiring="${emp.has_expiring ? '1' : '0'}">
+            <div class="crew-row__main">
+                <div class="crew-row__info">
+                    <div class="crew-row__name">${escHtml(name)}</div>
+                    <div class="crew-row__meta">
+                        ${phone ? `<a href="tel:${phone}" class="crew-row__phone" onclick="event.stopPropagation()">${formatPhone(phone)}</a>` : ''}
+                        ${email ? `<span class="crew-row__email">${escHtml(email)}</span>` : ''}
+                    </div>
+                </div>
+                <div class="crew-row__right">
+                    ${crewRole ? `<span class="crew-row__crew">${escHtml(crewRole)}</span>` : ''}
+                    <span class="badge ${statusClass}">${statusLabel}</span>
+                </div>
+            </div>
+            <div class="crew-row__badges">${badgesHtml}</div>
+        </div>`;
+    });
+
+    list.innerHTML = html;
+}
+
+function certAbbr(slug) {
+    const map = {
+        'osha-10': 'O10', 'osha-30': 'O30', 'first-aid-cpr': 'FA',
+        'fall-protection': 'FP', 'ext-reach-forklift': 'FK', 'driver': 'DR',
+        'bilingual': 'BL', 'crew-lead': 'CL', 'card-holder': 'CH'
+    };
+    return map[slug] || slug.substring(0, 2).toUpperCase();
+}
+
+function formatPhone(phone) {
+    if (phone && phone.startsWith('+1') && phone.length === 12) {
+        return '(' + phone.slice(2,5) + ') ' + phone.slice(5,8) + '-' + phone.slice(8);
+    }
+    return phone;
+}
+
+function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function filterCrewList() {
+    const query = document.getElementById('crew-search').value.toLowerCase();
+    const rows = document.querySelectorAll('.crew-row');
+    rows.forEach(row => {
+        const name = row.dataset.name;
+        const crew = row.dataset.crew;
+        const matchesSearch = !query || name.includes(query) || crew.includes(query);
+        let matchesFilter = true;
+        if (currentFilter === 'active') matchesFilter = row.dataset.active === '1';
+        else if (currentFilter === 'expired') matchesFilter = row.dataset.expired === '1';
+        else if (currentFilter === 'expiring') matchesFilter = row.dataset.expiring === '1';
+        row.style.display = (matchesSearch && matchesFilter) ? '' : 'none';
+    });
+}
+
+function setCrewFilter(filter, btn) {
+    currentFilter = filter;
+    document.querySelectorAll('.crew-filter-pills .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filterCrewList();
+}
+
+function showAddEmployeeForm() {
+    document.getElementById('add-employee-form').style.display = 'block';
+    document.getElementById('emp-first-name').focus();
+}
+
+function hideAddEmployeeForm() {
+    document.getElementById('add-employee-form').style.display = 'none';
+    document.getElementById('add-emp-error').style.display = 'none';
+    ['emp-first-name','emp-full-name','emp-phone','emp-email','emp-crew','emp-role'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+}
+
+async function submitAddEmployee() {
+    const firstName = document.getElementById('emp-first-name').value.trim();
+    const phone = document.getElementById('emp-phone').value.trim();
+    const errEl = document.getElementById('add-emp-error');
+
+    if (!firstName || !phone) {
+        errEl.textContent = 'First name and phone number are required.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    errEl.style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/employees', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                first_name: firstName,
+                full_name: document.getElementById('emp-full-name').value.trim() || undefined,
+                phone_number: phone,
+                email: document.getElementById('emp-email').value.trim() || undefined,
+                crew: document.getElementById('emp-crew').value.trim() || undefined,
+                role: document.getElementById('emp-role').value.trim() || undefined,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Failed to add employee.';
+            errEl.style.display = 'block';
+            return;
+        }
+        hideAddEmployeeForm();
+        loadCrewList();
+    } catch (err) {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.style.display = 'block';
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+{% set active_page = "crew" %}
+{% block title %}CrewCert — {{ employee.full_name or employee.first_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex; align-items:center; gap:8px;">
+        <a href="/crew" style="color:var(--text-muted); font-size:14px; text-decoration:none;">&larr; Crew</a>
+    </div>
+</div>
+
+<!-- Identity Card -->
+<div class="card emp-card">
+    <div class="emp-card__header">
+        <div class="emp-card__avatar">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M5.5 21c0-4.14 2.91-7 6.5-7s6.5 2.86 6.5 7"/></svg>
+        </div>
+        <div class="emp-card__info">
+            <h2 id="emp-name">{{ employee.full_name or employee.first_name }}</h2>
+            <div class="emp-card__meta">
+                {% if employee.phone_number %}
+                <a href="tel:{{ employee.phone_number }}" class="crew-row__phone">{{ employee.phone_number }}</a>
+                {% endif %}
+                {% if employee.email %}
+                <span class="crew-row__email">{{ employee.email }}</span>
+                {% endif %}
+            </div>
+            <div class="emp-card__meta">
+                {% if employee.crew %}<span>{{ employee.crew }}</span>{% endif %}
+                {% if employee.role %}<span>{{ employee.role }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="emp-card__actions">
+            <span class="badge {{ 'badge--confirmed' if employee.is_active else 'badge--rejected' }}">
+                {{ 'Active' if employee.is_active else 'Inactive' }}
+            </span>
+            <button class="btn btn--secondary btn--small" onclick="toggleEditEmployee()">Edit</button>
+        </div>
+    </div>
+
+    <!-- Inline Edit Form (hidden by default) -->
+    <div id="emp-edit-form" class="edit-form" style="display:none;">
+        <h4>Edit Employee</h4>
+        <div id="emp-edit-error" class="error-msg" style="display:none;"></div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>First Name</label>
+                <input type="text" id="edit-first-name" value="{{ employee.first_name }}">
+            </div>
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="edit-full-name" value="{{ employee.full_name or '' }}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Phone</label>
+                <input type="tel" id="edit-phone" value="{{ employee.phone_number or '' }}">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="edit-email" value="{{ employee.email or '' }}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Crew</label>
+                <input type="text" id="edit-crew" value="{{ employee.crew or '' }}">
+            </div>
+            <div class="form-group">
+                <label>Role</label>
+                <input type="text" id="edit-role" value="{{ employee.role or '' }}">
+            </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+            <button class="btn btn--primary btn--small" onclick="saveEmployee()">Save</button>
+            <button class="btn btn--secondary btn--small" onclick="toggleEditEmployee()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Cert Badge Row -->
+<div class="card" style="margin-top:16px;">
+    <h3>Certifications</h3>
+    <div id="cert-badges" class="crew-row__badges" style="margin-bottom:16px;">
+        <!-- Filled by JS -->
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+        <button class="btn btn--primary btn--small" onclick="showAddCertForm()">+ Add Certification</button>
+    </div>
+
+    <!-- Add Cert Form (hidden) -->
+    <div id="add-cert-form" class="edit-form" style="display:none; margin-bottom:16px;">
+        <h4>Add Certification</h4>
+        <div id="add-cert-error" class="error-msg" style="display:none;"></div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Certification Type *</label>
+                <select id="cert-type-select">
+                    <option value="">Select type...</option>
+                    {% for ct in cert_types %}
+                    <option value="{{ ct.id }}">{{ ct.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Issuing Organization</label>
+                <input type="text" id="cert-issuing-org" placeholder="e.g. Safety Solutions & Supply">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Issue Date</label>
+                <input type="date" id="cert-issued">
+            </div>
+            <div class="form-group">
+                <label>Expiry Date</label>
+                <input type="date" id="cert-expires">
+            </div>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+            <label>Notes</label>
+            <input type="text" id="cert-notes" placeholder="Optional notes">
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button class="btn btn--primary btn--small" onclick="submitAddCert()">Save</button>
+            <button class="btn btn--secondary btn--small" onclick="hideAddCertForm()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Certs Table -->
+    <div id="certs-loading" class="loading">Loading certifications...</div>
+    <div id="certs-empty" style="display:none; text-align:center; padding:24px; color:var(--text-muted);">
+        No certifications on file. Click "Add Certification" to get started.
+    </div>
+    <table id="certs-table" class="data-table" style="display:none;">
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Issued</th>
+                <th>Expires</th>
+                <th>Status</th>
+                <th>Doc</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="certs-tbody"></tbody>
+    </table>
+</div>
+
+<!-- Notes Section -->
+<div class="card" style="margin-top:16px;">
+    <h3>Notes</h3>
+    <textarea id="emp-notes" class="notes-input" rows="3" placeholder="Add notes about this employee...">{{ employee.notes or '' }}</textarea>
+    <button class="btn btn--secondary btn--small" onclick="saveNotes()">Save Notes</button>
+</div>
+
+<!-- Safety Violations Placeholder -->
+<div class="card" style="margin-top:16px;">
+    <h3>Safety Violations</h3>
+    <p style="color:var(--text-muted); font-size:14px; padding:16px 0; text-align:center;">No safety violations recorded.</p>
+</div>
+<!-- Cert Document Viewer Modal -->
+<div id="cert-doc-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeCertModal()"></div>
+    <div class="modal-content">
+        <button class="modal-close" onclick="closeCertModal()">&times;</button>
+        <div class="modal-body">
+            <div class="modal-image-wrap">
+                <img id="cert-doc-image" src="" alt="Certificate document">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a id="cert-doc-download" href="#" download class="btn btn--primary btn--small">Download</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const EMP_ID = {{ employee.id }};
+const CERT_TYPES = {{ cert_types | tojson }};
+let certsData = [];
+
+document.addEventListener('DOMContentLoaded', loadCerts);
+
+async function loadCerts() {
+    try {
+        const resp = await fetch(`/api/crew/employees/${EMP_ID}/certs`);
+        certsData = await resp.json();
+        renderBadges();
+        renderCertsTable();
+    } catch (err) {
+        document.getElementById('certs-loading').textContent = 'Failed to load certifications.';
+    }
+}
+
+function renderBadges() {
+    const container = document.getElementById('cert-badges');
+    // Build lookup of certs by type_id
+    const lookup = {};
+    certsData.forEach(c => {
+        if (!lookup[c.cert_type_id]) lookup[c.cert_type_id] = c;
+    });
+
+    let html = '';
+    CERT_TYPES.forEach(ct => {
+        const cert = lookup[ct.id];
+        const status = cert ? cert.status : 'none';
+        const abbr = certAbbr(ct.slug);
+        html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${status}" title="${ct.name}: ${status}">${abbr}</a>`;
+    });
+    container.innerHTML = html;
+}
+
+function renderCertsTable() {
+    const loading = document.getElementById('certs-loading');
+    const empty = document.getElementById('certs-empty');
+    const table = document.getElementById('certs-table');
+    const tbody = document.getElementById('certs-tbody');
+
+    loading.style.display = 'none';
+
+    if (certsData.length === 0) {
+        empty.style.display = 'block';
+        table.style.display = 'none';
+        return;
+    }
+
+    empty.style.display = 'none';
+    table.style.display = 'table';
+
+    let html = '';
+    certsData.forEach(c => {
+        const statusClass = c.status === 'valid' ? 'badge--confirmed' :
+                           c.status === 'expiring' ? 'badge--pending' : 'badge--flagged';
+        const statusLabel = c.status.charAt(0).toUpperCase() + c.status.slice(1);
+        const docIcon = c.document_path
+            ? `<button class="row-action-btn" title="View document" onclick="event.stopPropagation(); openCertDoc('${escHtml(c.document_path)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>`
+            : '<span style="color:var(--text-light);">—</span>';
+
+        html += `<tr id="cert-${c.cert_type_slug}">
+            <td><strong>${escHtml(c.cert_type_name)}</strong>
+                ${c.issuing_org ? '<br><span class="text-muted">' + escHtml(c.issuing_org) + '</span>' : ''}
+            </td>
+            <td>${c.issued_at || '—'}</td>
+            <td>${c.expires_at || 'No expiry'}</td>
+            <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+            <td>${docIcon}</td>
+            <td class="cell-actions">
+                <button class="row-action-btn row-action-btn--edit" title="Edit" onclick="editCert(${c.id})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="row-action-btn row-action-btn--delete" title="Delete" onclick="deleteCert(${c.id}, '${escHtml(c.cert_type_name)}')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+            </td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+}
+
+function certAbbr(slug) {
+    const map = {
+        'osha-10': 'O10', 'osha-30': 'O30', 'first-aid-cpr': 'FA',
+        'fall-protection': 'FP', 'ext-reach-forklift': 'FK', 'driver': 'DR',
+        'bilingual': 'BL', 'crew-lead': 'CL', 'card-holder': 'CH'
+    };
+    return map[slug] || slug.substring(0, 2).toUpperCase();
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// ── Employee Edit ──
+function toggleEditEmployee() {
+    const form = document.getElementById('emp-edit-form');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveEmployee() {
+    const errEl = document.getElementById('emp-edit-error');
+    errEl.style.display = 'none';
+    try {
+        const resp = await fetch(`/api/employees/${EMP_ID}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                first_name: document.getElementById('edit-first-name').value.trim(),
+                full_name: document.getElementById('edit-full-name').value.trim(),
+                phone_number: document.getElementById('edit-phone').value.trim(),
+                email: document.getElementById('edit-email').value.trim(),
+                crew: document.getElementById('edit-crew').value.trim(),
+                role: document.getElementById('edit-role').value.trim(),
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Failed to update.';
+            errEl.style.display = 'block';
+            return;
+        }
+        window.location.reload();
+    } catch (err) {
+        errEl.textContent = 'Network error.';
+        errEl.style.display = 'block';
+    }
+}
+
+// ── Add Cert ──
+function showAddCertForm() {
+    document.getElementById('add-cert-form').style.display = 'block';
+}
+function hideAddCertForm() {
+    document.getElementById('add-cert-form').style.display = 'none';
+    document.getElementById('add-cert-error').style.display = 'none';
+}
+
+async function submitAddCert() {
+    const certTypeId = document.getElementById('cert-type-select').value;
+    const errEl = document.getElementById('add-cert-error');
+    if (!certTypeId) {
+        errEl.textContent = 'Please select a certification type.';
+        errEl.style.display = 'block';
+        return;
+    }
+    errEl.style.display = 'none';
+    try {
+        const resp = await fetch('/api/crew/certifications', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                employee_id: EMP_ID,
+                cert_type_id: parseInt(certTypeId),
+                issued_at: document.getElementById('cert-issued').value || null,
+                expires_at: document.getElementById('cert-expires').value || null,
+                issuing_org: document.getElementById('cert-issuing-org').value.trim() || null,
+                notes: document.getElementById('cert-notes').value.trim() || null,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Failed to add certification.';
+            errEl.style.display = 'block';
+            return;
+        }
+        hideAddCertForm();
+        loadCerts();
+    } catch (err) {
+        errEl.textContent = 'Network error.';
+        errEl.style.display = 'block';
+    }
+}
+
+// ── Edit Cert (reuses add form for simplicity) ──
+async function editCert(certId) {
+    const cert = certsData.find(c => c.id === certId);
+    if (!cert) return;
+    document.getElementById('cert-type-select').value = cert.cert_type_id;
+    document.getElementById('cert-issued').value = cert.issued_at || '';
+    document.getElementById('cert-expires').value = cert.expires_at || '';
+    document.getElementById('cert-issuing-org').value = cert.issuing_org || '';
+    document.getElementById('cert-notes').value = cert.notes || '';
+    showAddCertForm();
+
+    // Swap save button to update mode
+    const form = document.getElementById('add-cert-form');
+    form.querySelector('h4').textContent = 'Edit Certification';
+    const saveBtn = form.querySelector('.btn--primary');
+    saveBtn.onclick = async function() {
+        const errEl = document.getElementById('add-cert-error');
+        errEl.style.display = 'none';
+        try {
+            const resp = await fetch(`/api/crew/certifications/${certId}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    cert_type_id: parseInt(document.getElementById('cert-type-select').value),
+                    issued_at: document.getElementById('cert-issued').value || null,
+                    expires_at: document.getElementById('cert-expires').value || null,
+                    issuing_org: document.getElementById('cert-issuing-org').value.trim() || null,
+                    notes: document.getElementById('cert-notes').value.trim() || null,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                errEl.textContent = data.error || 'Failed to update.';
+                errEl.style.display = 'block';
+                return;
+            }
+            hideAddCertForm();
+            form.querySelector('h4').textContent = 'Add Certification';
+            saveBtn.onclick = submitAddCert;
+            loadCerts();
+        } catch (err) {
+            errEl.textContent = 'Network error.';
+            errEl.style.display = 'block';
+        }
+    };
+}
+
+// ── Delete Cert ──
+async function deleteCert(certId, typeName) {
+    if (!confirm(`Delete ${typeName} certification? This can be undone by an admin.`)) return;
+    try {
+        const resp = await fetch(`/api/crew/certifications/${certId}/delete`, {method: 'POST'});
+        if (resp.ok) loadCerts();
+    } catch (err) {
+        alert('Failed to delete certification.');
+    }
+}
+
+// ── Cert Document Modal ──
+function openCertDoc(docPath) {
+    const modal = document.getElementById('cert-doc-modal');
+    const img = document.getElementById('cert-doc-image');
+    const dl = document.getElementById('cert-doc-download');
+    img.src = docPath;
+    dl.href = docPath;
+    modal.style.display = 'flex';
+}
+function closeCertModal() {
+    const modal = document.getElementById('cert-doc-modal');
+    modal.style.display = 'none';
+    document.getElementById('cert-doc-image').src = '';
+}
+
+// ── Notes ──
+async function saveNotes() {
+    const notes = document.getElementById('emp-notes').value;
+    try {
+        await fetch(`/api/employees/${EMP_ID}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({notes: notes}),
+        });
+    } catch (err) {
+        alert('Failed to save notes.');
+    }
+}
+</script>
+{% endblock %}

@@ -19,12 +19,19 @@ from flask import (
     Response, send_file,
 )
 
-from config.settings import RECEIPT_STORAGE_PATH
+from config.settings import RECEIPT_STORAGE_PATH, CERT_STORAGE_PATH
 from src.database.connection import get_db
+from src.services.permissions import check_permission
 
 log = logging.getLogger(__name__)
 
 dashboard_bp = Blueprint("dashboard", __name__)
+
+# Module tabs — extend this list when adding new modules
+MODULE_TABS = [
+    {"id": "ledger", "label": "Ledger", "href": "/ledger"},
+    {"id": "crew", "label": "Crew", "href": "/crew"},
+]
 
 
 # ── Pages ────────────────────────────────────────────────────
@@ -39,7 +46,8 @@ def home():
         flagged = _get_flagged_receipts(db)
         recent = _get_recent_receipts(db, limit=10)
         unknown = _get_unknown_contacts(db, limit=10)
-        return render_template("index.html", stats=stats, flagged=flagged, recent=recent, unknown=unknown)
+        can_edit = check_permission(None, "crewledger", "edit")
+        return render_template("index.html", stats=stats, flagged=flagged, recent=recent, unknown=unknown, can_edit=can_edit)
     finally:
         db.close()
 
@@ -63,6 +71,35 @@ def serve_receipt_image(filename):
 
     # Ensure the resolved path is inside the storage directory
     if not str(file_path).startswith(str(storage_dir)):
+        abort(404)
+
+    if not file_path.exists():
+        abort(404)
+
+    return send_from_directory(str(storage_dir), filename)
+
+
+# ── Cert Document Serving ────────────────────────────────────
+
+
+@dashboard_bp.route("/certifications/document/<employee_uuid>/<filename>")
+def serve_cert_document(employee_uuid, filename):
+    """Serve a cert document from local storage.
+
+    Path traversal protection: validates UUID format and filename.
+    Files stored at storage/certifications/<employee_uuid>/<filename>.
+    """
+    # Block path traversal
+    if "/" in filename or "\\" in filename or ".." in filename:
+        abort(404)
+    if ".." in employee_uuid or "/" in employee_uuid or "\\" in employee_uuid:
+        abort(404)
+
+    storage_dir = Path(CERT_STORAGE_PATH).resolve() / employee_uuid
+    file_path = (storage_dir / filename).resolve()
+
+    # Ensure resolved path is inside the cert storage directory
+    if not str(file_path).startswith(str(Path(CERT_STORAGE_PATH).resolve())):
         abort(404)
 
     if not file_path.exists():
@@ -250,8 +287,8 @@ def api_add_employee():
             return jsonify({"error": "Phone number already registered"}), 409
 
         db.execute(
-            "INSERT INTO employees (phone_number, first_name, full_name, role, crew) VALUES (?, ?, ?, ?, ?)",
-            (phone, data["first_name"], data.get("full_name"), data.get("role"), data.get("crew")),
+            "INSERT INTO employees (phone_number, first_name, full_name, email, role, crew) VALUES (?, ?, ?, ?, ?, ?)",
+            (phone, data["first_name"], data.get("full_name"), data.get("email"), data.get("role"), data.get("crew")),
         )
         db.commit()
         return jsonify({"status": "created", "phone_number": phone}), 201
@@ -279,7 +316,7 @@ def api_update_employee(employee_id):
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    allowed = {"first_name", "full_name", "role", "crew", "phone_number"}
+    allowed = {"first_name", "full_name", "email", "role", "crew", "phone_number", "notes"}
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400
@@ -574,14 +611,263 @@ def ledger_page():
         employees = db.execute("SELECT id, first_name FROM employees ORDER BY first_name").fetchall()
         projects = db.execute("SELECT id, name FROM projects WHERE status = 'active' ORDER BY name").fetchall()
         categories = db.execute("SELECT id, name FROM categories ORDER BY name").fetchall()
+        can_edit = check_permission(None, "crewledger", "edit")
         return render_template(
             "ledger.html",
             employees=[dict(e) for e in employees],
             projects=[dict(p) for p in projects],
             categories=[dict(c) for c in categories],
+            tabs=MODULE_TABS,
+            active_tab="ledger",
+            can_edit=can_edit,
         )
     finally:
         db.close()
+
+
+@dashboard_bp.route("/crew")
+def crew_page():
+    """CrewCert module — employee roster and certification tracking."""
+    if not check_permission(None, "crewcert", "view"):
+        abort(403)
+    return render_template(
+        "crew.html",
+        tabs=MODULE_TABS,
+        active_tab="crew",
+    )
+
+
+@dashboard_bp.route("/crew/<int:employee_id>")
+def crew_detail_page(employee_id):
+    """CrewCert — individual employee profile and certifications."""
+    db = get_db()
+    try:
+        emp = db.execute("SELECT * FROM employees WHERE id = ?", (employee_id,)).fetchone()
+        if not emp:
+            abort(404)
+
+        cert_types = db.execute(
+            "SELECT * FROM certification_types WHERE is_active = 1 ORDER BY sort_order"
+        ).fetchall()
+
+        return render_template(
+            "crew_detail.html",
+            employee=dict(emp),
+            cert_types=[dict(ct) for ct in cert_types],
+            tabs=MODULE_TABS,
+            active_tab="crew",
+        )
+    finally:
+        db.close()
+
+
+# ── CrewCert API ─────────────────────────────────────────
+
+
+@dashboard_bp.route("/api/cert-types")
+def api_cert_types():
+    """List all certification types."""
+    db = get_db()
+    try:
+        rows = db.execute(
+            "SELECT * FROM certification_types WHERE is_active = 1 ORDER BY sort_order"
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crew/employees")
+def api_crew_employees():
+    """Employee roster with certification badge summary.
+
+    Returns each employee with a `certs` array showing the status
+    of every cert type (valid / expiring / expired / none).
+    """
+    db = get_db()
+    try:
+        cert_types = db.execute(
+            "SELECT id, name, slug FROM certification_types WHERE is_active = 1 ORDER BY sort_order"
+        ).fetchall()
+
+        employees = db.execute("""
+            SELECT id, employee_uuid, first_name, full_name, phone_number,
+                   email, role, crew, is_active
+            FROM employees ORDER BY first_name
+        """).fetchall()
+
+        result = []
+        for emp in employees:
+            emp_dict = dict(emp)
+
+            # Get this employee's most recent cert per type
+            certs = db.execute("""
+                SELECT c.cert_type_id, c.issued_at, c.expires_at
+                FROM certifications c
+                WHERE c.employee_id = ? AND c.is_active = 1
+                ORDER BY c.issued_at DESC
+            """, (emp["id"],)).fetchall()
+
+            # Build a lookup: cert_type_id -> most recent cert
+            cert_lookup = {}
+            for c in certs:
+                if c["cert_type_id"] not in cert_lookup:
+                    cert_lookup[c["cert_type_id"]] = dict(c)
+
+            # Build badge array
+            badges = []
+            has_expired = False
+            has_expiring = False
+            for ct in cert_types:
+                cert = cert_lookup.get(ct["id"])
+                if cert and cert["expires_at"]:
+                    status = _cert_status(cert["expires_at"])
+                elif cert:
+                    # No expiry date — treat as valid (e.g., Bilingual, Crew Lead)
+                    status = "valid"
+                else:
+                    status = "none"
+
+                if status == "expired":
+                    has_expired = True
+                elif status == "expiring":
+                    has_expiring = True
+
+                badges.append({
+                    "type_id": ct["id"],
+                    "slug": ct["slug"],
+                    "name": ct["name"],
+                    "status": status,
+                })
+
+            emp_dict["certs"] = badges
+            emp_dict["has_expired"] = has_expired
+            emp_dict["has_expiring"] = has_expiring
+            result.append(emp_dict)
+
+        return jsonify(result)
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crew/employees/<int:employee_id>/certs")
+def api_employee_certs(employee_id):
+    """Full certification list for one employee."""
+    db = get_db()
+    try:
+        emp = db.execute("SELECT id FROM employees WHERE id = ?", (employee_id,)).fetchone()
+        if not emp:
+            return jsonify({"error": "Employee not found"}), 404
+
+        rows = db.execute("""
+            SELECT c.*, ct.name as cert_type_name, ct.slug as cert_type_slug
+            FROM certifications c
+            JOIN certification_types ct ON c.cert_type_id = ct.id
+            WHERE c.employee_id = ? AND c.is_active = 1
+            ORDER BY ct.sort_order
+        """, (employee_id,)).fetchall()
+
+        certs = []
+        for r in rows:
+            d = dict(r)
+            d["status"] = _cert_status(r["expires_at"]) if r["expires_at"] else "valid"
+            certs.append(d)
+
+        return jsonify(certs)
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crew/certifications", methods=["POST"])
+def api_add_certification():
+    """Add a new certification record."""
+    data = request.get_json(silent=True) or {}
+    employee_id = data.get("employee_id")
+    cert_type_id = data.get("cert_type_id")
+
+    if not employee_id or not cert_type_id:
+        return jsonify({"error": "employee_id and cert_type_id are required"}), 400
+
+    db = get_db()
+    try:
+        cursor = db.execute(
+            """INSERT INTO certifications
+               (employee_id, cert_type_id, issued_at, expires_at, issuing_org, notes)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                employee_id, cert_type_id,
+                data.get("issued_at"), data.get("expires_at"),
+                data.get("issuing_org"), data.get("notes"),
+            ),
+        )
+        db.commit()
+        return jsonify({"status": "created", "id": cursor.lastrowid}), 201
+    except Exception as e:
+        if "UNIQUE constraint" in str(e):
+            return jsonify({"error": "Duplicate certification record"}), 409
+        raise
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crew/certifications/<int:cert_id>", methods=["PUT"])
+def api_update_certification(cert_id):
+    """Update a certification record."""
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    try:
+        cert = db.execute("SELECT id FROM certifications WHERE id = ? AND is_active = 1", (cert_id,)).fetchone()
+        if not cert:
+            return jsonify({"error": "Certification not found"}), 404
+
+        allowed = {"cert_type_id", "issued_at", "expires_at", "issuing_org", "notes", "document_path"}
+        updates = {k: v for k, v in data.items() if k in allowed}
+        if not updates:
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [cert_id]
+        db.execute(f"UPDATE certifications SET {set_clause}, updated_at = datetime('now') WHERE id = ?", values)
+        db.commit()
+        return jsonify({"status": "updated"})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crew/certifications/<int:cert_id>/delete", methods=["POST"])
+def api_delete_certification(cert_id):
+    """Soft-delete a certification record."""
+    db = get_db()
+    try:
+        cert = db.execute("SELECT id FROM certifications WHERE id = ? AND is_active = 1", (cert_id,)).fetchone()
+        if not cert:
+            return jsonify({"error": "Certification not found"}), 404
+        db.execute("UPDATE certifications SET is_active = 0, updated_at = datetime('now') WHERE id = ?", (cert_id,))
+        db.commit()
+        return jsonify({"status": "deleted"})
+    finally:
+        db.close()
+
+
+def _cert_status(expires_at: str) -> str:
+    """Compute cert status from expiry date.
+
+    Returns: 'valid' (>90 days), 'expiring' (<90 days), or 'expired'.
+    """
+    try:
+        exp = datetime.strptime(expires_at, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        try:
+            exp = datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S").date()
+        except (ValueError, TypeError):
+            return "none"
+
+    today = datetime.now().date()
+    if exp < today:
+        return "expired"
+    elif (exp - today).days <= 90:
+        return "expiring"
+    return "valid"
 
 
 # ── Projects Page ───────────────────────────────────────
@@ -856,6 +1142,8 @@ def dismiss_receipt(receipt_id):
 @dashboard_bp.route("/api/dashboard/flagged/<int:receipt_id>/edit", methods=["POST"])
 def edit_receipt(receipt_id):
     """Edit a flagged receipt's fields, then approve it."""
+    if not check_permission(None, "crewledger", "edit"):
+        return jsonify({"error": "Insufficient permissions"}), 403
     data = request.get_json(silent=True) or {}
     db = get_db()
     try:
@@ -899,8 +1187,10 @@ def api_edit_receipt(receipt_id):
 
     Accepts JSON with any of: vendor_name, vendor_city, vendor_state,
     purchase_date, subtotal, tax, total, payment_method, notes,
-    matched_project_name, project_id.
+    matched_project_name, project_id, employee_id.
     """
+    if not check_permission(None, "crewledger", "edit"):
+        return jsonify({"error": "Insufficient permissions"}), 403
     data = request.get_json(silent=True) or {}
     if not data:
         return jsonify({"error": "No data provided"}), 400
@@ -915,6 +1205,7 @@ def api_edit_receipt(receipt_id):
             "vendor_name", "vendor_city", "vendor_state", "purchase_date",
             "subtotal", "tax", "total", "payment_method", "notes",
             "matched_project_name", "project_id", "category_id", "status", "duplicate_of",
+            "employee_id",
         }
         updates = {k: v for k, v in data.items() if k in allowed_fields}
         if not updates:
@@ -924,10 +1215,21 @@ def api_edit_receipt(receipt_id):
         for field, new_val in updates.items():
             old_val = receipt[field]
             if str(old_val) != str(new_val):
-                db.execute(
-                    "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
-                    (receipt_id, field, str(old_val) if old_val is not None else None, str(new_val), "dashboard"),
-                )
+                # For employee_id changes, log human-readable names
+                if field == "employee_id":
+                    old_emp = db.execute("SELECT first_name, full_name FROM employees WHERE id = ?", (old_val,)).fetchone()
+                    new_emp = db.execute("SELECT first_name, full_name FROM employees WHERE id = ?", (new_val,)).fetchone()
+                    old_display = (old_emp["full_name"] or old_emp["first_name"]) if old_emp else str(old_val)
+                    new_display = (new_emp["full_name"] or new_emp["first_name"]) if new_emp else str(new_val)
+                    db.execute(
+                        "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
+                        (receipt_id, "employee_id", old_display, new_display, "dashboard"),
+                    )
+                else:
+                    db.execute(
+                        "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
+                        (receipt_id, field, str(old_val) if old_val is not None else None, str(new_val), "dashboard"),
+                    )
 
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [receipt_id]
@@ -975,6 +1277,8 @@ def api_receipt_edit_history(receipt_id):
 @dashboard_bp.route("/api/receipts/<int:receipt_id>/delete", methods=["POST"])
 def api_delete_receipt(receipt_id):
     """Soft-delete a receipt (set status to 'deleted')."""
+    if not check_permission(None, "crewledger", "edit"):
+        return jsonify({"error": "Insufficient permissions"}), 403
     db = get_db()
     try:
         receipt = db.execute("SELECT * FROM receipts WHERE id = ?", (receipt_id,)).fetchone()

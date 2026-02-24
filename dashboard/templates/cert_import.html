@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% set active_page = "admin" %}
+{% block title %}Admin — Cert CSV Import{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Cert CSV Import</h1>
+</div>
+
+<!-- Upload -->
+<div id="upload-section" class="card">
+    <h3>Upload Certification CSV</h3>
+    <p style="color:var(--text-muted); font-size:14px; margin-bottom:16px;">
+        Expected columns: Employee Name, Certification Type, Issue Date, Expiry Date, Issuing Org, Notes
+    </p>
+    <div class="form-group">
+        <label>CSV File *</label>
+        <input type="file" id="csv-input" accept=".csv">
+    </div>
+    <div id="upload-error" class="error-msg" style="display:none;"></div>
+    <button class="btn btn--primary" onclick="uploadCsv()" style="margin-top:12px;">Upload & Preview</button>
+    <div id="upload-progress" style="display:none; margin-top:12px; color:var(--text-muted);">Processing CSV...</div>
+</div>
+
+<!-- Preview -->
+<div id="preview-section" style="display:none;">
+    <div class="card" style="margin-top:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3>Preview (<span id="row-count">0</span> rows)</h3>
+            <button class="btn btn--primary" onclick="importRows()">Import All Valid</button>
+        </div>
+        <div id="import-error" class="error-msg" style="display:none;"></div>
+        <div style="overflow-x:auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Employee (CSV)</th>
+                        <th>Match</th>
+                        <th>Cert Type</th>
+                        <th>Issued</th>
+                        <th>Expires</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="preview-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Results -->
+<div id="results-section" style="display:none;">
+    <div class="card" style="margin-top:16px;">
+        <h3>Import Complete</h3>
+        <div id="results-summary"></div>
+        <div style="margin-top:16px;">
+            <a href="/admin/cert-import" class="btn btn--primary">Import Another CSV</a>
+            <a href="/crew" class="btn btn--secondary">Back to Crew</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const EMPLOYEES = {{ employees | tojson }};
+const CERT_TYPES = {{ cert_types | tojson }};
+let previewData = [];
+
+function empName(emp) { return emp.full_name || emp.first_name; }
+
+async function uploadCsv() {
+    const fileInput = document.getElementById('csv-input');
+    const errEl = document.getElementById('upload-error');
+    errEl.style.display = 'none';
+
+    if (!fileInput.files.length) {
+        errEl.textContent = 'Please select a CSV file.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('csv', fileInput.files[0]);
+    document.getElementById('upload-progress').style.display = 'block';
+
+    try {
+        const resp = await fetch('/admin/cert-import/upload', {method: 'POST', body: formData});
+        const data = await resp.json();
+        document.getElementById('upload-progress').style.display = 'none';
+
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Upload failed.';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        previewData = data.rows;
+        renderPreview();
+    } catch (err) {
+        document.getElementById('upload-progress').style.display = 'none';
+        errEl.textContent = 'Network error.';
+        errEl.style.display = 'block';
+    }
+}
+
+function renderPreview() {
+    document.getElementById('upload-section').style.display = 'none';
+    document.getElementById('preview-section').style.display = 'block';
+    document.getElementById('row-count').textContent = previewData.length;
+
+    const tbody = document.getElementById('preview-tbody');
+    let html = '';
+
+    previewData.forEach((row, i) => {
+        const em = row.employee_match;
+        const ct = row.cert_type_match;
+
+        let statusHtml = '';
+        if (row.is_duplicate) {
+            statusHtml = '<span class="badge badge--rejected">Duplicate</span>';
+        } else if (em.confidence === 'high' && ct.confidence === 'high') {
+            statusHtml = '<span class="badge badge--confirmed">Ready</span>';
+        } else if (em.confidence === 'none' || ct.confidence === 'none') {
+            statusHtml = '<span class="badge badge--flagged">No Match</span>';
+        } else {
+            statusHtml = '<span class="badge badge--pending">Review</span>';
+        }
+
+        // Employee dropdown for override
+        let empOptions = '<option value="">— Select —</option>';
+        EMPLOYEES.forEach(e => {
+            const sel = (em.id && em.id === e.id) ? 'selected' : '';
+            empOptions += `<option value="${e.id}" ${sel}>${empName(e)}</option>`;
+        });
+
+        // Cert type dropdown for override
+        let ctOptions = '<option value="">— Select —</option>';
+        CERT_TYPES.forEach(c => {
+            const sel = (ct.id && ct.id === c.id) ? 'selected' : '';
+            ctOptions += `<option value="${c.id}" ${sel}>${c.name}</option>`;
+        });
+
+        const confClass = em.confidence === 'high' ? 'badge--confirmed' :
+                          em.confidence === 'medium' ? 'badge--pending' : 'badge--flagged';
+
+        html += `<tr data-row="${i}">
+            <td>${row.row_num}</td>
+            <td>${escHtml(row.employee_name)}</td>
+            <td>
+                <select class="emp-select" data-row="${i}" style="font-size:12px; padding:4px;">
+                    ${empOptions}
+                </select>
+                <br><span class="badge ${confClass}" style="font-size:9px;">${em.score}%</span>
+            </td>
+            <td>
+                <select class="ct-select" data-row="${i}" style="font-size:12px; padding:4px;">
+                    ${ctOptions}
+                </select>
+            </td>
+            <td>${row.issued_at || '—'}</td>
+            <td>${row.expires_at || '—'}</td>
+            <td>${statusHtml}</td>
+        </tr>`;
+    });
+
+    tbody.innerHTML = html;
+}
+
+async function importRows() {
+    const errEl = document.getElementById('import-error');
+    errEl.style.display = 'none';
+
+    // Collect rows from the preview, using dropdown overrides
+    const rows = [];
+    previewData.forEach((row, i) => {
+        if (row.is_duplicate) return; // Skip duplicates
+
+        const empSelect = document.querySelector(`.emp-select[data-row="${i}"]`);
+        const ctSelect = document.querySelector(`.ct-select[data-row="${i}"]`);
+        const empId = empSelect ? parseInt(empSelect.value) : null;
+        const ctId = ctSelect ? parseInt(ctSelect.value) : null;
+
+        if (empId && ctId) {
+            rows.push({
+                employee_id: empId,
+                cert_type_id: ctId,
+                issued_at: row.issued_at || null,
+                expires_at: row.expires_at || null,
+                issuing_org: row.issuing_org || null,
+                notes: row.notes || null,
+            });
+        }
+    });
+
+    if (rows.length === 0) {
+        errEl.textContent = 'No valid rows to import. Check employee and cert type selections.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    try {
+        const resp = await fetch('/admin/cert-import/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({rows: rows}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Import failed.';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        document.getElementById('preview-section').style.display = 'none';
+        document.getElementById('results-section').style.display = 'block';
+        document.getElementById('results-summary').innerHTML =
+            `<p><strong>${data.imported}</strong> imported, <strong>${data.skipped}</strong> skipped (duplicates), <strong>${data.errors}</strong> errors.</p>`;
+    } catch (err) {
+        errEl.textContent = 'Network error.';
+        errEl.style.display = 'block';
+    }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

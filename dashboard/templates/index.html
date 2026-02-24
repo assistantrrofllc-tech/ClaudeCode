@@ -92,3 +92,7 @@
     </div>
 </section>
 {% endblock %}
+
+{% block pre_scripts %}
+<script>var CAN_EDIT = {{ can_edit | tojson }};</script>
+{% endblock %}

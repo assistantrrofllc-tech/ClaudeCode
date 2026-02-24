@@ -162,15 +162,11 @@ def test_receipt_submission_with_photo():
 
     assert resp.status_code == 200
     body = resp.data.decode()
-    # TwiML XML-encodes & to &amp; so check both forms
+    # Auto-confirm: simple acknowledgment message (no confirmation prompt)
     assert "Ace Home" in body
-    assert "Kissimmee FL" in body
     assert "$100.64" in body
-    assert "3 items" in body
-    assert "Utility Lighter" in body
-    assert "Project: Project Sparrow" in body
     assert "Omar" in body
-    assert "YES" in body
+    assert "logged" in body
 
     # Verify receipt was created with OCR data
     db = get_db(TEST_DB)
@@ -189,12 +185,12 @@ def test_receipt_submission_with_photo():
     assert items[0]["item_name"] == "Utility Lighter"
     assert items[1]["unit_price"] == 27.99
 
-    # Verify conversation state
+    # Verify conversation state — auto-confirm sets state to idle
     convo = db.execute("SELECT * FROM conversation_state WHERE employee_id = 1").fetchone()
-    assert convo["state"] == "awaiting_confirmation"
+    assert convo["state"] == "idle"
     assert convo["receipt_id"] == receipt["id"]
     db.close()
-    print("  PASS: photo receipt → OCR data saved, confirmation message sent")
+    print("  PASS: photo receipt → OCR data saved, auto-confirmed")
 
 
 def test_receipt_submission_ocr_failure():

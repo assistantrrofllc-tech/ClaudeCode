@@ -18,7 +18,11 @@ CREATE TABLE IF NOT EXISTS employees (
     full_name       TEXT,
     role            TEXT,
     crew            TEXT,
+    email           TEXT,
     photo           TEXT,
+    notes           TEXT,
+    system_role     TEXT    DEFAULT 'employee'
+                           CHECK(system_role IN ('super_admin', 'company_admin', 'manager', 'employee')),
     is_active       INTEGER DEFAULT 1,
     created_at      TEXT    DEFAULT (datetime('now')),
     updated_at      TEXT    DEFAULT (datetime('now'))
@@ -202,6 +206,56 @@ INSERT OR IGNORE INTO email_settings (key, value) VALUES
     ('enabled', '1');
 
 -- ============================================================
+-- CERTIFICATION TYPES
+-- Lookup table for certification/credential types tracked
+-- per employee in the CrewCert module.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS certification_types (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT    UNIQUE NOT NULL,
+    slug            TEXT    UNIQUE NOT NULL,
+    sort_order      INTEGER DEFAULT 0,
+    is_active       INTEGER DEFAULT 1
+);
+
+INSERT OR IGNORE INTO certification_types (name, slug, sort_order) VALUES
+    ('OSHA 10',                'osha-10',           1),
+    ('OSHA 30',                'osha-30',           2),
+    ('First Aid / CPR',        'first-aid-cpr',     3),
+    ('Fall Protection',        'fall-protection',   4),
+    ('Extended Reach Forklift','ext-reach-forklift', 5),
+    ('Driver',                 'driver',            6),
+    ('Bilingual',              'bilingual',         7),
+    ('Crew Lead',              'crew-lead',         8),
+    ('Card Holder',            'card-holder',       9);
+
+-- ============================================================
+-- CERTIFICATIONS
+-- Links employees to certification types with issue/expiry dates.
+-- Document path points to stored cert image/PDF.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS certifications (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id     INTEGER NOT NULL,
+    cert_type_id    INTEGER NOT NULL,
+    issued_at       TEXT,
+    expires_at      TEXT,
+    document_path   TEXT,
+    issuing_org     TEXT,
+    notes           TEXT,
+    is_active       INTEGER DEFAULT 1,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    updated_at      TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (employee_id)  REFERENCES employees(id),
+    FOREIGN KEY (cert_type_id) REFERENCES certification_types(id),
+    UNIQUE(employee_id, cert_type_id, issued_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_certs_employee ON certifications(employee_id);
+CREATE INDEX IF NOT EXISTS idx_certs_type     ON certifications(cert_type_id);
+CREATE INDEX IF NOT EXISTS idx_certs_expires  ON certifications(expires_at);
+
+-- ============================================================
 -- RECEIPT EDITS (Audit Trail)
 -- Logs every field change made to a receipt after initial OCR.
 -- Preserves accountability and original OCR data integrity.
@@ -219,3 +273,60 @@ CREATE TABLE IF NOT EXISTS receipt_edits (
 
 CREATE INDEX IF NOT EXISTS idx_receipt_edits_receipt ON receipt_edits(receipt_id);
 CREATE INDEX IF NOT EXISTS idx_receipt_edits_date ON receipt_edits(edited_at);
+
+-- ============================================================
+-- COMMUNICATIONS (CrewComms)
+-- Cross-channel communication log: SMS, email, calls.
+-- Invisible foundation — no UI triggers this table yet.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS communications (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    direction       TEXT    NOT NULL CHECK(direction IN ('inbound', 'outbound')),
+    channel         TEXT    NOT NULL CHECK(channel IN ('sms', 'email', 'call')),
+    from_number     TEXT,
+    to_number       TEXT,
+    body            TEXT,
+    duration_seconds INTEGER,
+    recording_url   TEXT,
+    transcript      TEXT,
+    project_id      INTEGER,
+    contact_id      INTEGER,
+    employee_id     INTEGER,
+    external_id     TEXT    UNIQUE,
+    imported_at     TEXT,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (project_id)  REFERENCES projects(id),
+    FOREIGN KEY (employee_id) REFERENCES employees(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_comms_direction  ON communications(direction);
+CREATE INDEX IF NOT EXISTS idx_comms_channel    ON communications(channel);
+CREATE INDEX IF NOT EXISTS idx_comms_from       ON communications(from_number);
+CREATE INDEX IF NOT EXISTS idx_comms_to         ON communications(to_number);
+CREATE INDEX IF NOT EXISTS idx_comms_employee   ON communications(employee_id);
+CREATE INDEX IF NOT EXISTS idx_comms_external   ON communications(external_id);
+CREATE INDEX IF NOT EXISTS idx_comms_created    ON communications(created_at);
+
+-- ============================================================
+-- USER PERMISSIONS
+-- Module-level access control. Each row grants a user an access
+-- level for one module. Access levels: none, view, edit, admin.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_permissions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    module          TEXT    NOT NULL
+                           CHECK(module IN ('crewledger', 'crewcert', 'crewschedule',
+                                           'crewasset', 'crewinventory', 'crewcomms', 'crewgroup')),
+    access_level    TEXT    NOT NULL DEFAULT 'none'
+                           CHECK(access_level IN ('none', 'view', 'edit', 'admin')),
+    granted_by      INTEGER,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    updated_at      TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id)    REFERENCES employees(id),
+    FOREIGN KEY (granted_by) REFERENCES employees(id),
+    UNIQUE(user_id, module)
+);
+
+CREATE INDEX IF NOT EXISTS idx_perms_user   ON user_permissions(user_id);
+CREATE INDEX IF NOT EXISTS idx_perms_module ON user_permissions(module);

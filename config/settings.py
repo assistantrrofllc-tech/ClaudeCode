@@ -12,6 +12,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(PROJECT_ROOT / "data" / "crewledger.db"))
 RECEIPT_STORAGE_PATH = os.getenv("RECEIPT_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "receipts"))
+CERT_STORAGE_PATH = os.getenv("CERT_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "certifications"))
 
 # Twilio
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")

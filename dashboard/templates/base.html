@@ -24,6 +24,17 @@
         </div>
     </nav>
 
+    <!-- Module Tab Bar (shown on workspace pages) -->
+    {% if tabs %}
+    <div class="tab-bar">
+        {% for tab in tabs %}
+        <a href="{{ tab.href }}" class="tab-bar__tab {% if tab.id == active_tab %}tab-bar__tab--active{% endif %}">
+            {{ tab.label }}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- Main Content -->
     <main class="main">
         {% block content %}{% endblock %}
@@ -48,6 +59,7 @@
         </div>
     </div>
 
+    {% block pre_scripts %}{% endblock %}
     <script src="{{ url_for('static', filename='js/app.js') }}?v={{ cache_version }}"></script>
     {% block scripts %}{% endblock %}
 </body>

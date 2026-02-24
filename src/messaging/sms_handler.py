@@ -406,11 +406,14 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
         len(ocr_data.get("line_items", [])),
     )
 
-    # Set conversation state to awaiting confirmation
-    _set_conversation_state(db, employee_id, "awaiting_confirmation", receipt_id)
+    # Auto-confirm: set conversation to idle (A2P 10DLC pending — no outbound SMS)
+    _set_conversation_state(db, employee_id, "idle", receipt_id)
 
-    # Format the confirmation message from OCR data
-    return format_confirmation_message(ocr_data, first_name, project_name)
+    # Simple acknowledgment (no confirmation prompt)
+    vendor = ocr_data.get("vendor_name", "unknown vendor")
+    total = ocr_data.get("total")
+    total_str = f"${total:.2f}" if total else ""
+    return f"Got it, {first_name}! Receipt{' for ' + total_str if total_str else ''} at {vendor} has been logged."
 
 
 # ── Confirmation flow (YES/NO replies) ──────────────────────

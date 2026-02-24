@@ -23,6 +23,7 @@ from src.api.twilio_webhook import twilio_bp
 from src.api.reports import reports_bp
 from src.api.export import export_bp
 from src.api.dashboard import dashboard_bp
+from src.api.admin_tools import admin_bp
 
 
 def create_app() -> Flask:
@@ -34,7 +35,7 @@ def create_app() -> Flask:
     app.secret_key = SECRET_KEY
 
     # Cache-busting version for static files (changes on each deploy)
-    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "5")
+    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "9")
 
     @app.context_processor
     def inject_cache_version():
@@ -45,6 +46,7 @@ def create_app() -> Flask:
     app.register_blueprint(reports_bp)
     app.register_blueprint(export_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(admin_bp)
 
     @app.route("/health")
     def health():

@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% set active_page = "admin" %}
+{% block title %}Admin — Cert PDF Splitter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Cert PDF Splitter</h1>
+</div>
+
+<!-- Step 1: Upload -->
+<div id="upload-section" class="card">
+    <h3>Upload Multi-Page Certificate PDF</h3>
+    <p style="color:var(--text-muted); font-size:14px; margin-bottom:16px;">
+        Upload a PDF where each page is one employee's certificate. The system will split it and let you assign each page.
+    </p>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Certification Type *</label>
+            <select id="split-cert-type">
+                <option value="">Select type...</option>
+                {% for ct in cert_types %}
+                <option value="{{ ct.id }}">{{ ct.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Issuing Organization</label>
+            <input type="text" id="split-issuing-org" placeholder="e.g. Safety Solutions & Supply">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Issue Date</label>
+            <input type="date" id="split-issued">
+        </div>
+        <div class="form-group">
+            <label>Expiry Date</label>
+            <input type="date" id="split-expires">
+        </div>
+    </div>
+    <div class="form-group" style="margin-top:12px;">
+        <label>PDF File *</label>
+        <input type="file" id="pdf-input" accept=".pdf">
+    </div>
+    <div id="upload-error" class="error-msg" style="display:none;"></div>
+    <button class="btn btn--primary" onclick="uploadPdf()" style="margin-top:12px;">Upload & Split</button>
+    <div id="upload-progress" style="display:none; margin-top:12px; color:var(--text-muted);">Splitting PDF...</div>
+</div>
+
+<!-- Step 2: Preview & Assign -->
+<div id="preview-section" style="display:none;">
+    <div class="card" style="margin-top:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3>Assign Pages to Employees (<span id="page-count">0</span> pages)</h3>
+            <button class="btn btn--primary" onclick="saveAssignments()">Assign & Save All</button>
+        </div>
+        <div id="save-error" class="error-msg" style="display:none;"></div>
+        <div id="pages-grid" class="splitter-grid"></div>
+    </div>
+</div>
+
+<!-- Step 3: Results -->
+<div id="results-section" style="display:none;">
+    <div class="card" style="margin-top:16px;">
+        <h3>Assignment Complete</h3>
+        <div id="results-summary"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const EMPLOYEES = {{ employees | tojson }};
+let sessionId = null;
+let pagesData = [];
+
+function empName(emp) {
+    return emp.full_name || emp.first_name;
+}
+
+async function uploadPdf() {
+    const fileInput = document.getElementById('pdf-input');
+    const certType = document.getElementById('split-cert-type').value;
+    const errEl = document.getElementById('upload-error');
+    errEl.style.display = 'none';
+
+    if (!certType) {
+        errEl.textContent = 'Please select a certification type.';
+        errEl.style.display = 'block';
+        return;
+    }
+    if (!fileInput.files.length) {
+        errEl.textContent = 'Please select a PDF file.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('pdf', fileInput.files[0]);
+
+    document.getElementById('upload-progress').style.display = 'block';
+
+    try {
+        const resp = await fetch('/admin/cert-splitter/upload', {method: 'POST', body: formData});
+        const data = await resp.json();
+
+        document.getElementById('upload-progress').style.display = 'none';
+
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Upload failed.';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        sessionId = data.session_id;
+        pagesData = data.pages;
+        renderPreview();
+    } catch (err) {
+        document.getElementById('upload-progress').style.display = 'none';
+        errEl.textContent = 'Network error.';
+        errEl.style.display = 'block';
+    }
+}
+
+function renderPreview() {
+    document.getElementById('upload-section').style.display = 'none';
+    document.getElementById('preview-section').style.display = 'block';
+    document.getElementById('page-count').textContent = pagesData.length;
+
+    const grid = document.getElementById('pages-grid');
+    let html = '';
+
+    pagesData.forEach((page, i) => {
+        // Build employee dropdown with best match pre-selected
+        let optionsHtml = '<option value="">— Select employee —</option>';
+        let bestMatch = '';
+        if (page.suggested_name) {
+            const lower = page.suggested_name.toLowerCase();
+            EMPLOYEES.forEach(emp => {
+                const name = empName(emp).toLowerCase();
+                if (name.includes(lower) || lower.includes(name) ||
+                    name.split(' ').some(w => lower.includes(w) && w.length > 2)) {
+                    bestMatch = emp.id;
+                }
+            });
+        }
+
+        EMPLOYEES.forEach(emp => {
+            const selected = emp.id == bestMatch ? 'selected' : '';
+            optionsHtml += `<option value="${emp.id}" ${selected}>${empName(emp)}</option>`;
+        });
+
+        html += `
+        <div class="splitter-card">
+            <div class="splitter-card__header">Page ${page.page_num}</div>
+            <div class="splitter-card__text">${page.suggested_name ? '<strong>Detected: ' + escHtml(page.suggested_name) + '</strong>' : '<em>No name detected</em>'}</div>
+            <div class="splitter-card__preview">${escHtml(page.extracted_text.substring(0, 200))}${page.extracted_text.length > 200 ? '...' : ''}</div>
+            <select class="splitter-card__select" data-page="${page.page_num}">
+                ${optionsHtml}
+            </select>
+        </div>`;
+    });
+
+    grid.innerHTML = html;
+}
+
+async function saveAssignments() {
+    const errEl = document.getElementById('save-error');
+    errEl.style.display = 'none';
+
+    const selects = document.querySelectorAll('.splitter-card__select');
+    const assignments = [];
+    let unassigned = 0;
+
+    selects.forEach(sel => {
+        if (sel.value) {
+            assignments.push({
+                page_num: parseInt(sel.dataset.page),
+                employee_id: parseInt(sel.value),
+            });
+        } else {
+            unassigned++;
+        }
+    });
+
+    if (assignments.length === 0) {
+        errEl.textContent = 'Please assign at least one page to an employee.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    if (unassigned > 0 && !confirm(`${unassigned} page(s) are unassigned and will be skipped. Continue?`)) {
+        return;
+    }
+
+    try {
+        const resp = await fetch('/admin/cert-splitter/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                session_id: sessionId,
+                cert_type_id: parseInt(document.getElementById('split-cert-type').value),
+                issued_at: document.getElementById('split-issued').value || null,
+                expires_at: document.getElementById('split-expires').value || null,
+                issuing_org: document.getElementById('split-issuing-org').value.trim() || null,
+                assignments: assignments,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Save failed.';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        // Show results
+        document.getElementById('preview-section').style.display = 'none';
+        document.getElementById('results-section').style.display = 'block';
+
+        let summaryHtml = `<p style="margin-bottom:12px;"><strong>${data.saved}</strong> pages saved, <strong>${data.skipped}</strong> skipped.</p>`;
+        if (data.details && data.details.length) {
+            summaryHtml += '<table class="data-table"><thead><tr><th>Page</th><th>Employee</th><th>File</th></tr></thead><tbody>';
+            data.details.forEach(d => {
+                summaryHtml += `<tr><td>${d.page_num}</td><td>${escHtml(d.employee)}</td><td>${escHtml(d.file)}</td></tr>`;
+            });
+            summaryHtml += '</tbody></table>';
+        }
+        summaryHtml += '<div style="margin-top:16px;"><a href="/admin/cert-splitter" class="btn btn--primary">Split Another PDF</a></div>';
+
+        document.getElementById('results-summary').innerHTML = summaryHtml;
+    } catch (err) {
+        errEl.textContent = 'Network error.';
+        errEl.style.display = 'block';
+    }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

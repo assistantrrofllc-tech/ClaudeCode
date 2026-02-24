@@ -1,16 +1,43 @@
 /* CrewLedger Dashboard — Mobile-first CSS */
 
+/* ── CSS Custom Properties ────────────────────────────── */
+:root {
+    --primary: #1e3a5f;
+    --primary-light: #2a5a8f;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --bg: #f5f6f8;
+    --bg-card: #fff;
+    --bg-hover: #f9fafb;
+    --bg-muted: #f3f4f6;
+    --text: #1a1a2e;
+    --text-muted: #6b7280;
+    --text-light: #9ca3af;
+    --border: #e5e7eb;
+    --border-light: #f0f0f0;
+    --success: #16a34a;
+    --success-bg: #dcfce7;
+    --warning: #ca8a04;
+    --warning-bg: #fef9c3;
+    --danger: #dc2626;
+    --danger-bg: #fee2e2;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-pill: 20px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
 /* ── Reset & Base ──────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; -webkit-text-size-adjust: 100%; }
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background: #f5f6f8;
-    color: #1a1a2e;
+    background: var(--bg);
+    color: var(--text);
     line-height: 1.5;
     min-height: 100vh;
 }
-a { color: #2563eb; text-decoration: none; }
+a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button { cursor: pointer; font-family: inherit; }
 
@@ -48,6 +75,40 @@ button { cursor: pointer; font-family: inherit; }
 }
 .nav-link:hover { color: #fff; background: rgba(255,255,255,0.1); text-decoration: none; }
 .nav-link.active { color: #fff; background: rgba(255,255,255,0.15); }
+
+/* ── Module Tab Bar ───────────────────────────────────── */
+.tab-bar {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0;
+    padding: 0 16px;
+    position: sticky;
+    top: 56px;
+    z-index: 99;
+}
+.tab-bar__tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 20px;
+    min-height: 44px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+}
+.tab-bar__tab:hover {
+    color: var(--text);
+    text-decoration: none;
+}
+.tab-bar__tab--active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+}
 
 /* ── Main Layout ───────────────────────────────────────── */
 .main {
@@ -642,7 +703,7 @@ button { cursor: pointer; font-family: inherit; }
 
 @media print {
     body { background: #fff; }
-    .nav, .filter-bar, .sort-row, .header-actions, .modal, .totals-bar { display: none !important; }
+    .nav, .tab-bar, .filter-bar, .sort-row, .header-actions, .modal, .totals-bar { display: none !important; }
     .main { max-width: 100%; padding: 0; }
     .print-only { display: block !important; }
     .card, .ledger-card { display: none !important; }
@@ -694,6 +755,7 @@ button { cursor: pointer; font-family: inherit; }
 @media (min-width: 768px) {
     .main { padding: 24px 24px; }
     .nav { padding: 0 24px; }
+    .tab-bar { padding: 0 24px; }
 }
 
 @media (min-width: 1100px) {
@@ -714,6 +776,201 @@ button { cursor: pointer; font-family: inherit; }
 .settings-link-card span { display: block; font-size: 13px; color: #6b7280; }
 .settings-section { margin-bottom: 32px; }
 .settings-section h2 { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+
+/* ── Crew List ────────────────────────────────────────── */
+.crew-filters {
+    margin-bottom: 16px;
+}
+.crew-filter-pills {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+.crew-list-card {
+    padding: 0;
+    overflow: hidden;
+}
+.crew-row {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-light);
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.crew-row:hover {
+    background: var(--bg-hover);
+}
+.crew-row:last-child {
+    border-bottom: none;
+}
+.crew-row__main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.crew-row__info {
+    flex: 1;
+    min-width: 0;
+}
+.crew-row__name {
+    font-weight: 600;
+    font-size: 14px;
+}
+.crew-row__meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+.crew-row__phone {
+    font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+    color: var(--accent);
+}
+.crew-row__phone:hover {
+    text-decoration: underline;
+}
+.crew-row__email {
+    color: var(--text-muted);
+}
+.crew-row__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.crew-row__crew {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.crew-row__badges {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+
+/* ── Employee Card (Detail Page) ─────────────────────── */
+.emp-card__header {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+}
+.emp-card__avatar {
+    flex-shrink: 0;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--bg-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-light);
+}
+.emp-card__info {
+    flex: 1;
+    min-width: 0;
+}
+.emp-card__info h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.emp-card__meta {
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.emp-card__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 639px) {
+    .emp-card__header {
+        flex-wrap: wrap;
+    }
+    .emp-card__actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+/* ── Cert Badges ─────────────────────────────────────── */
+.cert-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    width: 28px;
+    height: 20px;
+    border-radius: 4px;
+    letter-spacing: -0.2px;
+}
+.cert-badge--valid {
+    background: var(--success-bg);
+    color: var(--success);
+}
+.cert-badge--expiring {
+    background: var(--warning-bg);
+    color: var(--warning);
+}
+.cert-badge--expired {
+    background: var(--danger-bg);
+    color: var(--danger);
+}
+.cert-badge--none {
+    background: var(--bg-muted);
+    color: var(--text-light);
+}
+
+/* ── Cert Splitter ───────────────────────────────────── */
+.splitter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+.splitter-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+}
+.splitter-card__header {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+.splitter-card__text {
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+.splitter-card__preview {
+    font-size: 11px;
+    color: var(--text-muted);
+    max-height: 60px;
+    overflow: hidden;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+.splitter-card__select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--bg-card);
+}
 
 /* ── Notes Section (modal) ──────────────────────────── */
 .notes-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; }

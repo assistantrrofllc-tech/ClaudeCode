@@ -1,5 +1,8 @@
 /* CrewLedger Dashboard — Core JavaScript */
 
+// ── Permissions (overridden by page-level scripts when available) ───
+if (typeof CAN_EDIT === 'undefined') var CAN_EDIT = true;
+
 // ── Receipt Image Modal ─────────────────────────────────
 
 var _currentReceiptId = null;
@@ -83,16 +86,18 @@ function openReceiptModal(receiptId) {
             // Footer with edit/history/delete buttons
             if (footer) {
                 var isHidden = (data.status === 'deleted' || data.status === 'duplicate');
-                var btns = '<button class="btn btn--small btn--secondary" onclick="toggleEditForm(' + receiptId + ')">Edit Receipt</button>'
-                    + ' <button class="btn btn--small btn--secondary" onclick="showEditHistory(' + receiptId + ')">Edit History</button>';
-                if (isHidden) {
-                    btns += ' <button class="btn btn--small btn--success" onclick="restoreReceipt(' + receiptId + ')">Restore</button>';
-                } else {
-                    if (data.status === 'pending' || data.status === 'flagged') {
-                        btns += ' <button class="btn btn--small btn--success" onclick="confirmReceipt(' + receiptId + ')">Confirm</button>';
+                var btns = ' <button class="btn btn--small btn--secondary" onclick="showEditHistory(' + receiptId + ')">Edit History</button>';
+                if (CAN_EDIT) {
+                    btns = '<button class="btn btn--small btn--secondary" onclick="toggleEditForm(' + receiptId + ')">Edit Receipt</button>' + btns;
+                    if (isHidden) {
+                        btns += ' <button class="btn btn--small btn--success" onclick="restoreReceipt(' + receiptId + ')">Restore</button>';
+                    } else {
+                        if (data.status === 'pending' || data.status === 'flagged') {
+                            btns += ' <button class="btn btn--small btn--success" onclick="confirmReceipt(' + receiptId + ')">Confirm</button>';
+                        }
+                        btns += ' <button class="btn btn--small btn--secondary" onclick="markDuplicate(' + receiptId + ')">Mark Duplicate</button>';
+                        btns += ' <button class="btn btn--small btn--danger" onclick="deleteReceipt(' + receiptId + ')">Delete</button>';
                     }
-                    btns += ' <button class="btn btn--small btn--secondary" onclick="markDuplicate(' + receiptId + ')">Mark Duplicate</button>';
-                    btns += ' <button class="btn btn--small btn--danger" onclick="deleteReceipt(' + receiptId + ')">Delete</button>';
                 }
                 footer.innerHTML = btns;
             }
@@ -143,12 +148,23 @@ function saveNotes(receiptId) {
 // ── Receipt Editing ─────────────────────────────────────
 
 var _cachedCategories = null;
+var _cachedEmployees = null;
 
 function _loadCategories(callback) {
     if (_cachedCategories) return callback(_cachedCategories);
     fetch('/api/categories?active=1')
         .then(function(r) { return r.json(); })
         .then(function(cats) { _cachedCategories = cats; callback(cats); });
+}
+
+function _loadEmployees(callback) {
+    if (_cachedEmployees) return callback(_cachedEmployees);
+    fetch('/api/employees')
+        .then(function(r) { return r.json(); })
+        .then(function(emps) {
+            _cachedEmployees = emps.filter(function(e) { return e.is_active; });
+            callback(_cachedEmployees);
+        });
 }
 
 function _buildCategorySelect(id, selectedId) {
@@ -158,6 +174,20 @@ function _buildCategorySelect(id, selectedId) {
             var c = _cachedCategories[i];
             var sel = (c.id == selectedId) ? ' selected' : '';
             html += '<option value="' + c.id + '"' + sel + '>' + escapeHtml(c.name) + '</option>';
+        }
+    }
+    html += '</select>';
+    return html;
+}
+
+function _buildEmployeeSelect(id, selectedId) {
+    var html = '<select id="' + id + '">';
+    if (_cachedEmployees) {
+        for (var i = 0; i < _cachedEmployees.length; i++) {
+            var e = _cachedEmployees[i];
+            var name = e.full_name || e.first_name;
+            var sel = (e.id == selectedId) ? ' selected' : '';
+            html += '<option value="' + e.id + '"' + sel + '>' + escapeHtml(name) + '</option>';
         }
     }
     html += '</select>';
@@ -176,31 +206,34 @@ function toggleEditForm(receiptId) {
     }
 
     _loadCategories(function() {
-        var form = document.createElement('div');
-        form.id = 'receipt-edit-form';
-        form.className = 'edit-form';
-        form.innerHTML = '<h4>Edit Receipt</h4>'
-            + '<div class="form-row">'
-            + '<div class="form-group"><label>Vendor</label><input type="text" id="edit-vendor" value="' + escapeAttr(data.vendor_name || '') + '"></div>'
-            + '<div class="form-group"><label>Date</label><input type="date" id="edit-date" value="' + (data.purchase_date || '') + '"></div>'
-            + '</div>'
-            + '<div class="form-row">'
-            + '<div class="form-group"><label>Subtotal</label><input type="number" step="0.01" id="edit-subtotal" value="' + (data.subtotal || '') + '"></div>'
-            + '<div class="form-group"><label>Tax</label><input type="number" step="0.01" id="edit-tax" value="' + (data.tax || '') + '"></div>'
-            + '<div class="form-group"><label>Total</label><input type="number" step="0.01" id="edit-total" value="' + (data.total || '') + '"></div>'
-            + '</div>'
-            + '<div class="form-row">'
-            + '<div class="form-group"><label>Payment Method</label><input type="text" id="edit-payment" value="' + escapeAttr(data.payment_method || '') + '"></div>'
-            + '<div class="form-group"><label>Project</label><input type="text" id="edit-project" value="' + escapeAttr(data.project_name || data.matched_project_name || '') + '"></div>'
-            + '<div class="form-group"><label>Category</label>' + _buildCategorySelect('edit-category', data.category_id) + '</div>'
-            + '</div>'
-            + '<div style="margin-top:8px;">'
-            + '<button class="btn btn--small btn--primary" onclick="saveReceiptEdit(' + receiptId + ')">Save Changes</button>'
-            + ' <button class="btn btn--small btn--secondary" onclick="document.getElementById(\'receipt-edit-form\').remove()">Cancel</button>'
-            + ' <span id="edit-msg" style="margin-left:8px;font-size:12px;"></span>'
-            + '</div>';
+        _loadEmployees(function() {
+            var form = document.createElement('div');
+            form.id = 'receipt-edit-form';
+            form.className = 'edit-form';
+            form.innerHTML = '<h4>Edit Receipt</h4>'
+                + '<div class="form-row">'
+                + '<div class="form-group"><label>Submitter</label>' + _buildEmployeeSelect('edit-employee', data.employee_id) + '</div>'
+                + '<div class="form-group"><label>Vendor</label><input type="text" id="edit-vendor" value="' + escapeAttr(data.vendor_name || '') + '"></div>'
+                + '<div class="form-group"><label>Date</label><input type="date" id="edit-date" value="' + (data.purchase_date || '') + '"></div>'
+                + '</div>'
+                + '<div class="form-row">'
+                + '<div class="form-group"><label>Subtotal</label><input type="number" step="0.01" id="edit-subtotal" value="' + (data.subtotal || '') + '"></div>'
+                + '<div class="form-group"><label>Tax</label><input type="number" step="0.01" id="edit-tax" value="' + (data.tax || '') + '"></div>'
+                + '<div class="form-group"><label>Total</label><input type="number" step="0.01" id="edit-total" value="' + (data.total || '') + '"></div>'
+                + '</div>'
+                + '<div class="form-row">'
+                + '<div class="form-group"><label>Payment Method</label><input type="text" id="edit-payment" value="' + escapeAttr(data.payment_method || '') + '"></div>'
+                + '<div class="form-group"><label>Project</label><input type="text" id="edit-project" value="' + escapeAttr(data.project_name || data.matched_project_name || '') + '"></div>'
+                + '<div class="form-group"><label>Category</label>' + _buildCategorySelect('edit-category', data.category_id) + '</div>'
+                + '</div>'
+                + '<div style="margin-top:8px;">'
+                + '<button class="btn btn--small btn--primary" onclick="saveReceiptEdit(' + receiptId + ')">Save Changes</button>'
+                + ' <button class="btn btn--small btn--secondary" onclick="document.getElementById(\'receipt-edit-form\').remove()">Cancel</button>'
+                + ' <span id="edit-msg" style="margin-left:8px;font-size:12px;"></span>'
+                + '</div>';
 
-        details.appendChild(form);
+            details.appendChild(form);
+        });
     });
 }
 
@@ -209,7 +242,9 @@ function saveReceiptEdit(receiptId) {
     msg.innerHTML = '<span style="color:#6b7280;">Saving...</span>';
 
     var catEl = document.getElementById('edit-category');
+    var empEl = document.getElementById('edit-employee');
     var payload = {
+        employee_id: empEl ? parseInt(empEl.value) : null,
         vendor_name: document.getElementById('edit-vendor').value,
         purchase_date: document.getElementById('edit-date').value,
         subtotal: parseFloat(document.getElementById('edit-subtotal').value) || 0,
