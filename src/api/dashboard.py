@@ -1587,6 +1587,15 @@ def api_edit_receipt(receipt_id):
                         "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
                         (receipt_id, "employee_id", old_display, new_display, "dashboard"),
                     )
+                elif field == "project_id":
+                    old_proj = db.execute("SELECT name FROM projects WHERE id = ?", (old_val,)).fetchone() if old_val else None
+                    new_proj = db.execute("SELECT name FROM projects WHERE id = ?", (new_val,)).fetchone() if new_val else None
+                    old_display = old_proj["name"] if old_proj else None
+                    new_display = new_proj["name"] if new_proj else None
+                    db.execute(
+                        "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
+                        (receipt_id, "project", old_display, new_display, "dashboard"),
+                    )
                 else:
                     db.execute(
                         "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
