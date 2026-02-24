@@ -1244,7 +1244,7 @@ def projects_page():
             SELECT p.*,
                    (SELECT COUNT(*) FROM receipts r WHERE r.project_id = p.id) as receipt_count,
                    (SELECT COALESCE(SUM(r.total), 0) FROM receipts r WHERE r.project_id = p.id) as total_spend
-            FROM projects p ORDER BY p.name
+            FROM projects p ORDER BY CASE p.status WHEN 'active' THEN 0 WHEN 'on_hold' THEN 1 ELSE 2 END, p.name
         """).fetchall()
         return _render_module(
             "projects.html", "crewledger", "projects",
