@@ -1100,6 +1100,71 @@ button { cursor: pointer; font-family: inherit; }
     border-radius: 0 0 12px 12px;
 }
 
+/* ── Crew Groups ──────────────────────────────────── */
+.crew-group {
+    margin-bottom: 16px;
+}
+.crew-group__header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+}
+.crew-group__header:hover { background: var(--bg-hover); }
+.crew-group__toggle {
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+}
+.crew-group--collapsed .crew-group__toggle {
+    transform: rotate(-90deg);
+}
+.crew-group__name {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text);
+}
+.crew-group__count {
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.crew-group__alerts {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.crew-group__alert-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.crew-group__alert-tag--expired {
+    background: var(--danger-bg);
+    color: var(--danger);
+}
+.crew-group__alert-tag--expiring {
+    background: var(--warning-bg);
+    color: var(--warning);
+}
+.crew-group__body {
+    padding-top: 12px;
+}
+.crew-group--collapsed .crew-group__body {
+    display: none;
+}
+
 /* ── Crew Grid Responsive ─────────────────────────── */
 @media (min-width: 640px) { .crew-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1024px) { .crew-grid { grid-template-columns: repeat(3, 1fr); } }

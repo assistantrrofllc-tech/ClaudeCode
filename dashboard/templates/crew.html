@@ -67,7 +67,7 @@
 <div id="crew-empty" class="card" style="display:none; text-align:center; padding:48px 20px;">
     <p style="color:var(--text-muted); font-size:16px;">No employees found. Add your first crew member above.</p>
 </div>
-<div id="crew-grid" class="crew-grid" style="display:none;"></div>
+<div id="crew-groups" style="display:none;"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -90,70 +90,118 @@ async function loadCrewList() {
 function renderCrewList(employees) {
     const loading = document.getElementById('crew-loading');
     const empty = document.getElementById('crew-empty');
-    const grid = document.getElementById('crew-grid');
+    const container = document.getElementById('crew-groups');
 
     loading.style.display = 'none';
 
     if (employees.length === 0) {
         empty.style.display = 'block';
-        grid.style.display = 'none';
+        container.style.display = 'none';
         return;
     }
 
     empty.style.display = 'none';
-    grid.style.display = 'grid';
+    container.style.display = 'block';
 
-    let html = '';
+    // Group employees by crew field
+    const groups = {};
     employees.forEach(emp => {
-        const name = emp.full_name || emp.first_name;
-        const phone = emp.phone_number || '';
-        const email = emp.email || '';
-        const crewRole = [emp.crew, emp.role].filter(Boolean).join(' \u00b7 ');
-        const statusClass = emp.is_active ? 'badge--confirmed' : 'badge--rejected';
-        const statusLabel = emp.is_active ? 'Active' : 'Inactive';
-        const initials = getInitials(name);
-        const isPlaceholder = phone.startsWith('placeholder') || phone.startsWith('+1placeholder');
-
-        let contactHtml = '';
-        if (phone && !isPlaceholder) {
-            contactHtml += `<a href="tel:${phone}" class="crew-row__phone" onclick="event.stopPropagation()">${formatPhone(phone)}</a>`;
-        } else {
-            contactHtml += `<span class="crew-card__add-phone" title="Add phone number">+ phone</span>`;
-        }
-        if (email) {
-            contactHtml += `<span>${escHtml(email)}</span>`;
-        }
-
-        let badgesHtml = '';
-        if (emp.certs) {
-            emp.certs.forEach(c => {
-                badgesHtml += certBadge(c.slug, c.status, c.name);
-            });
-        }
-
-        html += `
-        <div class="crew-card" onclick="window.location='/crew/${emp.id}'"
-             data-name="${name.toLowerCase()}"
-             data-crew="${(emp.crew || '').toLowerCase()}"
-             data-active="${emp.is_active ? '1' : '0'}"
-             data-expired="${emp.has_expired ? '1' : '0'}"
-             data-expiring="${emp.has_expiring ? '1' : '0'}">
-            <div class="crew-card__header">
-                <div class="crew-card__avatar">${initials}</div>
-                <div class="crew-card__info">
-                    <div class="crew-card__name">${escHtml(name)}</div>
-                    ${crewRole ? `<div class="crew-card__role">${escHtml(crewRole)}</div>` : ''}
-                </div>
-                <div class="crew-card__status">
-                    <span class="badge ${statusClass}">${statusLabel}</span>
-                </div>
-            </div>
-            <div class="crew-card__contact">${contactHtml}</div>
-            <div class="crew-card__badges">${badgesHtml}</div>
-        </div>`;
+        const key = emp.crew || 'Unassigned';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(emp);
     });
 
-    grid.innerHTML = html;
+    // Sort group names alphabetically, "Unassigned" last
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+        if (a === 'Unassigned') return 1;
+        if (b === 'Unassigned') return -1;
+        return a.localeCompare(b);
+    });
+
+    let html = '';
+    sortedKeys.forEach(crewName => {
+        const members = groups[crewName];
+        const expiredCount = members.filter(e => e.has_expired).length;
+        const expiringCount = members.filter(e => e.has_expiring).length;
+
+        let alertsHtml = '';
+        if (expiredCount > 0) {
+            alertsHtml += `<span class="crew-group__alert-tag crew-group__alert-tag--expired">${expiredCount} expired</span>`;
+        }
+        if (expiringCount > 0) {
+            alertsHtml += `<span class="crew-group__alert-tag crew-group__alert-tag--expiring">${expiringCount} expiring</span>`;
+        }
+
+        html += `<div class="crew-group" data-crew-group="${escHtml(crewName.toLowerCase())}">`;
+        html += `<div class="crew-group__header" onclick="toggleCrewGroup(this.parentElement)">`;
+        html += `<span class="crew-group__toggle">\u25BC</span>`;
+        html += `<span class="crew-group__name">${escHtml(crewName === 'Unassigned' ? 'Unassigned' : crewName + "'s Crew")}</span>`;
+        html += `<span class="crew-group__count">${members.length} member${members.length !== 1 ? 's' : ''}</span>`;
+        html += `<div class="crew-group__alerts">${alertsHtml}</div>`;
+        html += `</div>`;
+        html += `<div class="crew-group__body"><div class="crew-grid" style="display:grid;">`;
+
+        members.forEach(emp => {
+            html += renderEmployeeCard(emp);
+        });
+
+        html += `</div></div></div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+function renderEmployeeCard(emp) {
+    const name = emp.full_name || emp.first_name;
+    const phone = emp.phone_number || '';
+    const email = emp.email || '';
+    const crewRole = [emp.crew, emp.role].filter(Boolean).join(' \u00b7 ');
+    const statusClass = emp.is_active ? 'badge--confirmed' : 'badge--rejected';
+    const statusLabel = emp.is_active ? 'Active' : 'Inactive';
+    const initials = getInitials(name);
+    const isPlaceholder = phone.startsWith('placeholder') || phone.startsWith('+1placeholder');
+
+    let contactHtml = '';
+    if (phone && !isPlaceholder) {
+        contactHtml += `<a href="tel:${phone}" class="crew-row__phone" onclick="event.stopPropagation()">${formatPhone(phone)}</a>`;
+    } else {
+        contactHtml += `<span class="crew-card__add-phone" title="Add phone number">+ phone</span>`;
+    }
+    if (email) {
+        contactHtml += `<span>${escHtml(email)}</span>`;
+    }
+
+    let badgesHtml = '';
+    if (emp.certs) {
+        emp.certs.forEach(c => {
+            if (c.status !== 'none') badgesHtml += certBadge(c.slug, c.status, c.name);
+        });
+    }
+
+    return `
+    <div class="crew-card" onclick="window.location='/crew/${emp.id}'"
+         data-name="${name.toLowerCase()}"
+         data-crew="${(emp.crew || '').toLowerCase()}"
+         data-active="${emp.is_active ? '1' : '0'}"
+         data-expired="${emp.has_expired ? '1' : '0'}"
+         data-expiring="${emp.has_expiring ? '1' : '0'}">
+        <div class="crew-card__header">
+            <div class="crew-card__avatar">${initials}</div>
+            <div class="crew-card__info">
+                <div class="crew-card__name">${escHtml(name)}</div>
+                ${crewRole ? `<div class="crew-card__role">${escHtml(crewRole)}</div>` : ''}
+            </div>
+            <div class="crew-card__status">
+                <span class="badge ${statusClass}">${statusLabel}</span>
+            </div>
+        </div>
+        <div class="crew-card__contact">${contactHtml}</div>
+        <div class="crew-card__badges">${badgesHtml}</div>
+    </div>`;
+}
+
+function toggleCrewGroup(groupEl) {
+    groupEl.classList.toggle('crew-group--collapsed');
 }
 
 function getInitials(name) {
@@ -207,16 +255,27 @@ function escHtml(str) {
 
 function filterCrewList() {
     const query = document.getElementById('crew-search').value.toLowerCase();
-    const cards = document.querySelectorAll('.crew-card');
-    cards.forEach(card => {
-        const name = card.dataset.name;
-        const crew = card.dataset.crew;
-        const matchesSearch = !query || name.includes(query) || crew.includes(query);
-        let matchesFilter = true;
-        if (currentFilter === 'active') matchesFilter = card.dataset.active === '1';
-        else if (currentFilter === 'expired') matchesFilter = card.dataset.expired === '1';
-        else if (currentFilter === 'expiring') matchesFilter = card.dataset.expiring === '1';
-        card.style.display = (matchesSearch && matchesFilter) ? '' : 'none';
+    const groups = document.querySelectorAll('.crew-group');
+
+    groups.forEach(group => {
+        const cards = group.querySelectorAll('.crew-card');
+        let anyVisible = false;
+
+        cards.forEach(card => {
+            const name = card.dataset.name;
+            const crew = card.dataset.crew;
+            const matchesSearch = !query || name.includes(query) || crew.includes(query);
+            let matchesFilter = true;
+            if (currentFilter === 'active') matchesFilter = card.dataset.active === '1';
+            else if (currentFilter === 'expired') matchesFilter = card.dataset.expired === '1';
+            else if (currentFilter === 'expiring') matchesFilter = card.dataset.expiring === '1';
+            const visible = matchesSearch && matchesFilter;
+            card.style.display = visible ? '' : 'none';
+            if (visible) anyVisible = true;
+        });
+
+        // Hide entire group if no cards visible
+        group.style.display = anyVisible ? '' : 'none';
     });
 }
 

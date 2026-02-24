@@ -209,11 +209,10 @@ function renderBadges() {
     CERT_TYPES.forEach(ct => {
         const cert = lookup[ct.id];
         const status = cert ? cert.status : 'none';
+        if (status === 'none') return;
         var icon = CERT_ICONS[ct.slug] || '';
         var abbr = CERT_ABBR[ct.slug] || ct.slug.substring(0, 2).toUpperCase();
-        if (status === 'none') {
-            html += `<span class="cert-badge cert-badge--none" title="${ct.name}: none">${icon}${abbr}</span>`;
-        } else if (cert && cert.document_path) {
+        if (cert && cert.document_path) {
             html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${status}" title="${ct.name}: ${status}" onclick="event.preventDefault(); openCertDoc('${escHtml(cert.document_path)}', '${escHtml(ct.name)}')">${icon}${abbr}</a>`;
         } else {
             html += `<a href="#cert-${ct.slug}" class="cert-badge cert-badge--${status}" title="${ct.name}: ${status}">${icon}${abbr}</a>`;
