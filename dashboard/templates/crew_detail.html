@@ -160,6 +160,45 @@
     </table>
 </div>
 
+<!-- QR Code Section -->
+<div class="card" style="margin-top:16px;">
+    <h3>QR Code</h3>
+    {% if employee.public_token %}
+    <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; padding:8px 0;">
+        <div id="qr-container" style="text-align:center;">
+            <img id="qr-image" src="/api/crew/employees/{{ employee.id }}/qr" alt="QR Code" style="width:200px; height:200px; border:1px solid var(--border); border-radius:8px;">
+            <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Scan to verify certifications</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <a href="/api/crew/employees/{{ employee.id }}/qr" download="qr_{{ employee.full_name or employee.first_name | replace(' ', '_') }}.png" class="btn btn--primary btn--small">Download PNG</a>
+            <button class="btn btn--secondary btn--small" onclick="printQR()">Print</button>
+            <button class="btn btn--secondary btn--small" style="color:var(--danger);" onclick="regenerateToken()">Regenerate</button>
+        </div>
+    </div>
+    {% else %}
+    <div style="text-align:center; padding:16px 0; color:var(--text-muted); font-size:14px;">
+        <p>No verification token set.</p>
+        <button class="btn btn--primary btn--small" style="margin-top:8px;" onclick="regenerateToken()">Generate QR Code</button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- QR Scan Log -->
+<div class="card" style="margin-top:16px;">
+    <h3>QR Code Scan Log</h3>
+    <div id="scan-log-loading" style="text-align:center; padding:16px 0; color:var(--text-muted); font-size:14px;">Loading scan log...</div>
+    <div id="scan-log-empty" style="display:none; text-align:center; padding:16px 0; color:var(--text-muted); font-size:14px;">No scans recorded yet.</div>
+    <table id="scan-log-table" class="data-table" style="display:none;">
+        <thead>
+            <tr>
+                <th>Date/Time</th>
+                <th>IP Address</th>
+            </tr>
+        </thead>
+        <tbody id="scan-log-tbody"></tbody>
+    </table>
+</div>
+
 <!-- Notes Section -->
 <div class="card" style="margin-top:16px;">
     <h3>Notes</h3>
@@ -196,7 +235,10 @@ const EMP_ID = {{ employee.id }};
 const CERT_TYPES = {{ cert_types | tojson }};
 let certsData = [];
 
-document.addEventListener('DOMContentLoaded', loadCerts);
+document.addEventListener('DOMContentLoaded', function() {
+    loadCerts();
+    loadScanLog();
+});
 
 async function loadCerts() {
     try {
@@ -465,6 +507,67 @@ function closeCertModal() {
     const modal = document.getElementById('cert-doc-modal');
     modal.style.display = 'none';
     document.getElementById('cert-doc-frame').src = '';
+}
+
+// ── QR Code ──
+async function regenerateToken() {
+    const msg = document.getElementById('qr-image')
+        ? 'This will invalidate the current QR code. Any printed cards will need to be reprinted. Continue?'
+        : 'Generate a new QR code for this employee?';
+    if (!confirm(msg)) return;
+    try {
+        const resp = await fetch(`/api/crew/employees/${EMP_ID}/regenerate-token`, {method: 'POST'});
+        if (resp.ok) window.location.reload();
+        else alert('Failed to regenerate token.');
+    } catch (err) {
+        alert('Network error.');
+    }
+}
+
+function printQR() {
+    const img = document.getElementById('qr-image');
+    if (!img) return;
+    const name = document.getElementById('emp-name').textContent;
+    const w = window.open('', '_blank');
+    w.document.write(`<!DOCTYPE html><html><head><title>QR Code - ${name}</title>
+        <style>body{font-family:sans-serif;text-align:center;padding:40px;}
+        img{width:300px;height:300px;}h2{margin-bottom:8px;}p{color:#666;font-size:14px;}
+        @media print{body{padding:20px;}}</style></head><body>
+        <h2>${name}</h2>
+        <img src="${img.src}" alt="QR Code">
+        <p>Scan to verify certifications</p>
+        <p style="margin-top:24px;font-size:11px;color:#999;">Roofing & Renovations of Florida</p>
+        <script>window.onload=function(){window.print();}<\/script>
+        </body></html>`);
+    w.document.close();
+}
+
+// ── Scan Log ──
+async function loadScanLog() {
+    try {
+        const resp = await fetch(`/api/crew/employees/${EMP_ID}/scan-log`);
+        const scans = await resp.json();
+        const loading = document.getElementById('scan-log-loading');
+        const empty = document.getElementById('scan-log-empty');
+        const table = document.getElementById('scan-log-table');
+        const tbody = document.getElementById('scan-log-tbody');
+        loading.style.display = 'none';
+        if (scans.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+        table.style.display = 'table';
+        let html = '';
+        scans.forEach(s => {
+            const d = new Date(s.scanned_at + 'Z');
+            const fmt = d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'})
+                + ' ' + d.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
+            html += `<tr><td>${fmt}</td><td>${escHtml(s.ip_address || '—')}</td></tr>`;
+        });
+        tbody.innerHTML = html;
+    } catch (err) {
+        document.getElementById('scan-log-loading').textContent = 'Failed to load scan log.';
+    }
 }
 
 // ── Notes ──

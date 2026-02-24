@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS employees (
     photo           TEXT,
     nickname        TEXT,
     is_driver       INTEGER DEFAULT 0,
+    public_token    TEXT    UNIQUE,
     notes           TEXT,
     system_role     TEXT    DEFAULT 'employee'
                            CHECK(system_role IN ('super_admin', 'company_admin', 'manager', 'employee')),
@@ -335,3 +336,20 @@ CREATE TABLE IF NOT EXISTS user_permissions (
 
 CREATE INDEX IF NOT EXISTS idx_perms_user   ON user_permissions(user_id);
 CREATE INDEX IF NOT EXISTS idx_perms_module ON user_permissions(module);
+
+-- ============================================================
+-- QR SCAN LOG
+-- Logs each scan of an employee's public QR code.
+-- Used for audit trail — who verified, when.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS qr_scan_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id     INTEGER NOT NULL,
+    ip_address      TEXT,
+    user_agent      TEXT,
+    scanned_at      TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (employee_id) REFERENCES employees(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_qr_scans_employee ON qr_scan_log(employee_id);
+CREATE INDEX IF NOT EXISTS idx_qr_scans_time     ON qr_scan_log(scanned_at);

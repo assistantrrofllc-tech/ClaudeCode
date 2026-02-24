@@ -11,6 +11,7 @@ import csv
 import io
 import json
 import logging
+import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -326,9 +327,10 @@ def api_add_employee():
         if existing:
             return jsonify({"error": "Phone number already registered"}), 409
 
+        token = secrets.token_urlsafe(12)
         db.execute(
-            "INSERT INTO employees (phone_number, first_name, full_name, email, role, crew) VALUES (?, ?, ?, ?, ?, ?)",
-            (phone, data["first_name"], data.get("full_name"), data.get("email"), data.get("role"), data.get("crew")),
+            "INSERT INTO employees (phone_number, first_name, full_name, email, role, crew, public_token) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (phone, data["first_name"], data.get("full_name"), data.get("email"), data.get("role"), data.get("crew"), token),
         )
         db.commit()
         return jsonify({"status": "created", "phone_number": phone}), 201
@@ -697,6 +699,151 @@ def crew_detail_page(employee_id):
             employee=dict(emp),
             cert_types=[dict(ct) for ct in cert_types],
         )
+    finally:
+        db.close()
+
+
+# ── Public Cert Verification ─────────────────────────────
+
+
+# Simple in-memory rate limiter: token -> list of timestamps
+_scan_rate_limit: dict[str, list[float]] = {}
+
+
+@dashboard_bp.route("/crew/verify/<token>")
+def public_verify(token):
+    """Public cert verification page — no login required.
+
+    Looked up by public_token. Shows employee name + certs only.
+    Rate limited to 30 requests per token per hour.
+    """
+    import time
+
+    # Rate limiting: 30 requests per token per hour
+    now = time.time()
+    window = _scan_rate_limit.get(token, [])
+    window = [t for t in window if now - t < 3600]
+    if len(window) >= 30:
+        return render_template("verify_rate_limited.html"), 429
+    window.append(now)
+    _scan_rate_limit[token] = window
+
+    db = get_db()
+    try:
+        emp = db.execute(
+            "SELECT id, first_name, full_name, photo, is_active, public_token FROM employees WHERE public_token = ?",
+            (token,),
+        ).fetchone()
+
+        if not emp:
+            return render_template("verify_invalid.html"), 404
+
+        if not emp["is_active"]:
+            return render_template("verify_inactive.html"), 200
+
+        # Log the scan
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        if ip and "," in ip:
+            ip = ip.split(",")[0].strip()
+        ua = request.headers.get("User-Agent", "")[:200]
+        db.execute(
+            "INSERT INTO qr_scan_log (employee_id, ip_address, user_agent) VALUES (?, ?, ?)",
+            (emp["id"], ip, ua),
+        )
+        db.commit()
+
+        # Get active certs
+        certs = db.execute("""
+            SELECT ct.name as cert_name, c.issued_at, c.expires_at
+            FROM certifications c
+            JOIN certification_types ct ON c.cert_type_id = ct.id
+            WHERE c.employee_id = ? AND c.is_active = 1
+            ORDER BY ct.sort_order
+        """, (emp["id"],)).fetchall()
+
+        cert_list = []
+        for c in certs:
+            status = _cert_status(c["expires_at"]) if c["expires_at"] else "valid"
+            cert_list.append({
+                "name": c["cert_name"],
+                "issued_at": c["issued_at"],
+                "expires_at": c["expires_at"],
+                "status": status,
+            })
+
+        return render_template(
+            "verify_public.html",
+            employee_name=emp["full_name"] or emp["first_name"],
+            employee_photo=emp["photo"],
+            certs=cert_list,
+            verified_at=datetime.now().strftime("%b %d, %Y %I:%M%p"),
+        )
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crew/employees/<int:employee_id>/qr")
+def api_employee_qr(employee_id):
+    """Generate QR code PNG for an employee's public verify URL."""
+    import qrcode
+    from io import BytesIO
+
+    db = get_db()
+    try:
+        emp = db.execute("SELECT public_token FROM employees WHERE id = ?", (employee_id,)).fetchone()
+        if not emp or not emp["public_token"]:
+            return jsonify({"error": "Employee not found or no token"}), 404
+
+        host = request.host_url.rstrip("/")
+        url = f"{host}/crew/verify/{emp['public_token']}"
+
+        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+
+        return send_file(buf, mimetype="image/png", as_attachment=False, download_name=f"qr_{employee_id}.png")
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crew/employees/<int:employee_id>/regenerate-token", methods=["POST"])
+def api_regenerate_token(employee_id):
+    """Regenerate public_token for an employee, invalidating old QR code."""
+    db = get_db()
+    try:
+        emp = db.execute("SELECT id FROM employees WHERE id = ?", (employee_id,)).fetchone()
+        if not emp:
+            return jsonify({"error": "Employee not found"}), 404
+
+        new_token = secrets.token_urlsafe(12)
+        db.execute(
+            "UPDATE employees SET public_token = ?, updated_at = datetime('now') WHERE id = ?",
+            (new_token, employee_id),
+        )
+        db.commit()
+        return jsonify({"status": "regenerated", "token": new_token})
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/api/crew/employees/<int:employee_id>/scan-log")
+def api_employee_scan_log(employee_id):
+    """Return the last 20 QR scans for an employee."""
+    db = get_db()
+    try:
+        rows = db.execute("""
+            SELECT scanned_at, ip_address
+            FROM qr_scan_log
+            WHERE employee_id = ?
+            ORDER BY scanned_at DESC
+            LIMIT 20
+        """, (employee_id,)).fetchall()
+        return jsonify([dict(r) for r in rows])
     finally:
         db.close()
 

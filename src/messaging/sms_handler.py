@@ -15,6 +15,7 @@ project matching, categorization, etc.)
 import json
 import logging
 import re
+import secrets
 
 from src.database.connection import get_db
 from src.services.image_store import download_and_save_image
@@ -124,9 +125,10 @@ def _handle_new_employee(db, phone: str, body: str, media: list) -> str:
             "I'll get you set up."
         )
 
+    token = secrets.token_urlsafe(12)
     db.execute(
-        "INSERT INTO employees (phone_number, first_name) VALUES (?, ?)",
-        (phone, name),
+        "INSERT INTO employees (phone_number, first_name, public_token) VALUES (?, ?, ?)",
+        (phone, name, token),
     )
     db.commit()
     log.info("New employee registered: %s (%s)", name, phone)
