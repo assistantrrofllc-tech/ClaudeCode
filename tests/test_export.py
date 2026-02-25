@@ -121,7 +121,15 @@ def setup_test_db():
 def get_test_client():
     app = create_app()
     app.config["TESTING"] = True
-    return app.test_client()
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user"] = {
+            "email": "test@example.com",
+            "name": "Test User",
+            "picture": "",
+            "role": "admin",
+        }
+    return client
 
 
 def parse_csv_response(resp) -> list[dict]:

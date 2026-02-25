@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}CrewOS — Home{% endblock %}
+
+{% block content %}
+<!-- User Welcome -->
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+    <div>
+        <h1 style="margin:0;">Welcome{% if current_user %}, {{ current_user.name.split(' ')[0] }}{% endif %}</h1>
+        <p class="text-muted" style="margin-top:4px;">CrewOS Field Operations Platform</p>
+    </div>
+    {% if current_user %}
+    <div style="display:flex; align-items:center; gap:12px;">
+        {% if current_user.picture %}
+        <img src="{{ current_user.picture }}" alt="" style="width:36px; height:36px; border-radius:50%;" referrerpolicy="no-referrer">
+        {% endif %}
+        <a href="/auth/logout" class="btn btn--secondary btn--small">Logout</a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Module Cards -->
+<div class="home-grid">
+    <!-- CrewLedger -->
+    <a href="/ledger" class="home-card home-card--live">
+        <div class="home-card__header">
+            <div class="home-card__icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/>
+                    <line x1="2" y1="9" x2="22" y2="9"/>
+                    <line x1="12" y1="15" x2="12" y2="15.01"/>
+                </svg>
+            </div>
+            <span class="home-card__badge home-card__badge--live">Live</span>
+        </div>
+        <h3 class="home-card__title">CrewLedger</h3>
+        <p class="home-card__desc">Receipt &amp; expense tracking</p>
+        <div class="home-card__stats">
+            <span>{{ receipts_this_week }} receipts this week</span>
+            <span>${{ "%.2f"|format(spend_this_month) }} this month</span>
+        </div>
+    </a>
+
+    <!-- CrewCert -->
+    <a href="/crew" class="home-card home-card--live">
+        <div class="home-card__header">
+            <div class="home-card__icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <span class="home-card__badge home-card__badge--live">Live</span>
+        </div>
+        <h3 class="home-card__title">CrewCert</h3>
+        <p class="home-card__desc">Certification tracking</p>
+        <div class="home-card__stats">
+            <span>{{ employee_count }} employees</span>
+            <span>{{ expiring_certs }} certs expiring soon</span>
+        </div>
+    </a>
+
+    <!-- CrewSchedule (coming soon) -->
+    <div class="home-card home-card--disabled">
+        <div class="home-card__header">
+            <div class="home-card__icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="16" y1="2" x2="16" y2="6"/>
+                    <line x1="8" y1="2" x2="8" y2="6"/>
+                    <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+            </div>
+            <span class="home-card__badge home-card__badge--soon">Coming Soon</span>
+        </div>
+        <h3 class="home-card__title">CrewSchedule</h3>
+        <p class="home-card__desc">Crew scheduling &amp; dispatch</p>
+    </div>
+
+    <!-- CrewSafe (coming soon) -->
+    <div class="home-card home-card--disabled">
+        <div class="home-card__header">
+            <div class="home-card__icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+            </div>
+            <span class="home-card__badge home-card__badge--soon">Coming Soon</span>
+        </div>
+        <h3 class="home-card__title">CrewSafe</h3>
+        <p class="home-card__desc">JHAs, daily logs &amp; compliance</p>
+    </div>
+
+    <!-- CrewAsset (coming soon) -->
+    <div class="home-card home-card--disabled">
+        <div class="home-card__header">
+            <div class="home-card__icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="1" y="6" width="22" height="12" rx="2"/>
+                    <path d="M1 10h22"/>
+                </svg>
+            </div>
+            <span class="home-card__badge home-card__badge--soon">Coming Soon</span>
+        </div>
+        <h3 class="home-card__title">CrewAsset</h3>
+        <p class="home-card__desc">Equipment &amp; vehicle tracking</p>
+    </div>
+</div>
+{% endblock %}

@@ -93,6 +93,135 @@ button { cursor: pointer; font-family: inherit; }
 }
 .module-bar__tab--disabled:hover { background: none; color: rgba(255,255,255,0.25); }
 
+/* Home button in module bar */
+.module-bar__home {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.7);
+    margin-right: 8px;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    transition: color 0.15s, background 0.15s;
+    text-decoration: none;
+}
+.module-bar__home:hover { color: #fff; background: rgba(255,255,255,0.1); text-decoration: none; }
+
+/* User avatar + logout in module bar */
+.module-bar__user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.module-bar__avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.module-bar__avatar--initials {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+}
+.module-bar__logout {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.5);
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    transition: color 0.15s, background 0.15s;
+    text-decoration: none;
+}
+.module-bar__logout:hover { color: #fff; background: rgba(255,255,255,0.1); text-decoration: none; }
+
+/* ── Home Screen Module Cards ────────────────────────── */
+.home-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 20px;
+}
+.home-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    display: block;
+}
+.home-card--live:hover {
+    border-color: var(--accent);
+    box-shadow: 0 2px 12px rgba(37,99,235,0.08);
+    text-decoration: none;
+}
+.home-card--disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.home-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.home-card__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+}
+.home-card--disabled .home-card__icon { color: var(--text-muted); }
+.home-card__badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.home-card__badge--live {
+    background: var(--success-bg);
+    color: var(--success);
+}
+.home-card__badge--soon {
+    background: var(--bg-muted);
+    color: var(--text-muted);
+}
+.home-card__title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.home-card__desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+.home-card__stats {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+@media (max-width: 600px) {
+    .home-grid { grid-template-columns: 1fr; }
+}
+
 /* ── Layer 2 — Module Sub-Nav ────────────────────────── */
 .subnav {
     background: var(--bg-card);

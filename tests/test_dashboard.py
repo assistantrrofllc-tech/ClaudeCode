@@ -102,20 +102,38 @@ def setup_test_db():
 def get_test_client():
     app = create_app()
     app.config["TESTING"] = True
-    return app.test_client()
+    client = app.test_client()
+    # Set up authenticated session for all tests
+    with client.session_transaction() as sess:
+        sess["user"] = {
+            "email": "test@example.com",
+            "name": "Test User",
+            "picture": "",
+            "role": "admin",
+        }
+    return client
 
 
-# ── Dashboard Home Page ──────────────────────────────────
+# ── Home Screen ──────────────────────────────────────────
 
 
-def test_dashboard_home():
-    """Dashboard home page renders with stats and receipts."""
+def test_home_screen():
+    """Home screen renders with module cards."""
     setup_test_db()
     client = get_test_client()
     resp = client.get("/")
     assert resp.status_code == 200
     assert b"CrewLedger" in resp.data
-    assert b"Ace Home" in resp.data or b"Recent" in resp.data
+    assert b"CrewCert" in resp.data
+
+
+def test_ledger_dashboard():
+    """Ledger dashboard page renders with stats and receipts."""
+    setup_test_db()
+    client = get_test_client()
+    resp = client.get("/ledger/dashboard")
+    assert resp.status_code == 200
+    assert b"CrewLedger" in resp.data
 
 
 def test_dashboard_stats_api():
@@ -1174,8 +1192,10 @@ def test_settings_page_shows_categories():
 
 if __name__ == "__main__":
     print("Testing dashboard...\n")
-    test_dashboard_home()
-    print("  PASS: dashboard home")
+    test_home_screen()
+    print("  PASS: home screen")
+    test_ledger_dashboard()
+    print("  PASS: ledger dashboard")
     test_dashboard_stats_api()
     print("  PASS: stats API")
     test_serve_valid_image()

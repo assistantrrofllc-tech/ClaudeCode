@@ -22,6 +22,7 @@ from flask import (
 
 from config.settings import RECEIPT_STORAGE_PATH, CERT_STORAGE_PATH
 from src.database.connection import get_db
+from src.services.auth import login_required
 from src.services.cert_status import calculate_cert_status, days_until_expiry
 from src.services.permissions import check_permission
 
@@ -32,7 +33,7 @@ dashboard_bp = Blueprint("dashboard", __name__)
 # Per-module sub-navigation (Layer 2)
 MODULE_NAVS = {
     "crewledger": [
-        {"id": "dashboard", "label": "Dashboard", "href": "/"},
+        {"id": "dashboard", "label": "Dashboard", "href": "/ledger/dashboard"},
         {"id": "ledger", "label": "Ledger", "href": "/ledger"},
         {"id": "projects", "label": "Projects", "href": "/projects"},
         {"id": "settings", "label": "Settings", "href": "/settings"},
@@ -59,8 +60,59 @@ def _render_module(template, active_module, active_subnav="", **kwargs):
 
 
 @dashboard_bp.route("/")
+@login_required
 def home():
-    """Dashboard home — spend summary, flagged receipts, recent activity."""
+    """CrewOS home screen — module cards with live summary data."""
+    db = get_db()
+    try:
+        # CrewLedger stats
+        now = datetime.now()
+        week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+        month_start = now.strftime("%Y-%m-01")
+
+        row = db.execute(
+            """SELECT COUNT(*) as cnt FROM receipts
+               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate')""",
+            (week_start,),
+        ).fetchone()
+        receipts_this_week = row["cnt"] if row else 0
+
+        row = db.execute(
+            """SELECT COALESCE(SUM(total), 0) as total FROM receipts
+               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate')""",
+            (month_start,),
+        ).fetchone()
+        spend_this_month = row["total"] if row else 0
+
+        # CrewCert stats
+        row = db.execute(
+            "SELECT COUNT(*) as cnt FROM employees WHERE is_active = 1"
+        ).fetchone()
+        employee_count = row["cnt"] if row else 0
+
+        row = db.execute(
+            """SELECT COUNT(*) as cnt FROM certifications c
+               WHERE c.is_active = 1 AND c.expires_at IS NOT NULL
+               AND date(c.expires_at) <= date('now', '+30 days')
+               AND date(c.expires_at) >= date('now')"""
+        ).fetchone()
+        expiring_certs = row["cnt"] if row else 0
+
+        return render_template(
+            "home.html",
+            receipts_this_week=receipts_this_week,
+            spend_this_month=spend_this_month,
+            employee_count=employee_count,
+            expiring_certs=expiring_certs,
+        )
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/ledger/dashboard")
+@login_required
+def ledger_dashboard():
+    """CrewLedger dashboard — spend summary, flagged receipts, recent activity."""
     db = get_db()
     try:
         stats = _get_dashboard_stats(db)
@@ -77,6 +129,7 @@ def home():
 
 
 @dashboard_bp.route("/receipts/image/<filename>")
+@login_required
 def serve_receipt_image(filename):
     """Serve a receipt image from local storage.
 
@@ -104,6 +157,7 @@ def serve_receipt_image(filename):
 
 
 @dashboard_bp.route("/certs/file/<filename>")
+@login_required
 def serve_cert_file(filename):
     """Serve a cert PDF from the cert_files directory.
 
@@ -154,6 +208,7 @@ def serve_cert_document(employee_uuid, filename):
 
 
 @dashboard_bp.route("/api/receipts")
+@login_required
 def api_receipts():
     """JSON endpoint for receipt data with filtering.
 
@@ -177,6 +232,7 @@ def api_receipts():
 
 
 @dashboard_bp.route("/api/receipts", methods=["POST"])
+@login_required
 def api_create_receipt():
     """Manually create a receipt (management entry). Saved as confirmed."""
     data = request.get_json(silent=True) or {}
@@ -234,6 +290,7 @@ def api_create_receipt():
 
 
 @dashboard_bp.route("/api/receipts/export")
+@login_required
 def api_receipts_export():
     """Export filtered receipts as QuickBooks CSV, Google Sheets CSV, or Excel.
 
@@ -256,6 +313,7 @@ def api_receipts_export():
 
 
 @dashboard_bp.route("/api/receipts/<int:receipt_id>")
+@login_required
 def api_receipt_detail(receipt_id):
     """Single receipt with full detail including line items."""
     db = get_db()
@@ -269,6 +327,7 @@ def api_receipt_detail(receipt_id):
 
 
 @dashboard_bp.route("/api/dashboard/stats")
+@login_required
 def api_dashboard_stats():
     """Dashboard summary stats as JSON."""
     db = get_db()
@@ -282,6 +341,7 @@ def api_dashboard_stats():
 
 
 @dashboard_bp.route("/employees")
+@login_required
 def employees_page():
     """Employee management page."""
     db = get_db()
@@ -297,6 +357,7 @@ def employees_page():
 
 
 @dashboard_bp.route("/api/employees", methods=["GET"])
+@login_required
 def api_employees():
     """List all employees as JSON."""
     db = get_db()
@@ -312,6 +373,7 @@ def api_employees():
 
 
 @dashboard_bp.route("/api/employees", methods=["POST"])
+@login_required
 def api_add_employee():
     """Add a new employee."""
     data = request.get_json()
@@ -340,6 +402,7 @@ def api_add_employee():
 
 
 @dashboard_bp.route("/api/employees/<int:employee_id>", methods=["GET"])
+@login_required
 def api_employee_detail(employee_id):
     """Get a single employee (also serves as CrewCert QR landing page)."""
     db = get_db()
@@ -353,6 +416,7 @@ def api_employee_detail(employee_id):
 
 
 @dashboard_bp.route("/api/employees/<int:employee_id>", methods=["PUT"])
+@login_required
 def api_update_employee(employee_id):
     """Update employee fields."""
     data = request.get_json()
@@ -377,6 +441,7 @@ def api_update_employee(employee_id):
 
 
 @dashboard_bp.route("/api/employees/<int:employee_id>/deactivate", methods=["POST"])
+@login_required
 def api_deactivate_employee(employee_id):
     """Deactivate an employee — they can no longer submit receipts."""
     db = get_db()
@@ -389,6 +454,7 @@ def api_deactivate_employee(employee_id):
 
 
 @dashboard_bp.route("/api/employees/<int:employee_id>/activate", methods=["POST"])
+@login_required
 def api_activate_employee(employee_id):
     """Reactivate an employee."""
     db = get_db()
@@ -404,6 +470,7 @@ def api_activate_employee(employee_id):
 
 
 @dashboard_bp.route("/api/projects", methods=["GET"])
+@login_required
 def api_projects():
     """List all projects as JSON."""
     db = get_db()
@@ -426,6 +493,7 @@ def api_projects():
 
 
 @dashboard_bp.route("/api/projects", methods=["POST"])
+@login_required
 def api_add_project():
     """Add a new project."""
     data = request.get_json()
@@ -460,6 +528,7 @@ def api_add_project():
 
 
 @dashboard_bp.route("/api/projects/<int:project_id>", methods=["PUT"])
+@login_required
 def api_update_project(project_id):
     """Update a project."""
     data = request.get_json()
@@ -484,6 +553,7 @@ def api_update_project(project_id):
 
 
 @dashboard_bp.route("/api/projects/<int:project_id>", methods=["DELETE"])
+@login_required
 def api_delete_project(project_id):
     """Delete a project. Receipts linked to it are kept but unlinked."""
     db = get_db()
@@ -500,6 +570,7 @@ def api_delete_project(project_id):
 
 
 @dashboard_bp.route("/api/projects/<int:project_id>", methods=["GET"])
+@login_required
 def api_project_detail(project_id):
     """Get a single project."""
     db = get_db()
@@ -521,6 +592,7 @@ def api_project_detail(project_id):
 
 
 @dashboard_bp.route("/api/categories", methods=["GET"])
+@login_required
 def api_categories():
     """List all categories. Pass ?active=1 to get only active ones."""
     db = get_db()
@@ -546,6 +618,7 @@ def api_categories():
 
 
 @dashboard_bp.route("/api/categories", methods=["POST"])
+@login_required
 def api_add_category():
     """Add a new category."""
     data = request.get_json(silent=True) or {}
@@ -570,6 +643,7 @@ def api_add_category():
 
 
 @dashboard_bp.route("/api/categories/<int:cat_id>", methods=["PUT"])
+@login_required
 def api_update_category(cat_id):
     """Rename or update a category."""
     data = request.get_json(silent=True) or {}
@@ -598,6 +672,7 @@ def api_update_category(cat_id):
 
 
 @dashboard_bp.route("/api/categories/<int:cat_id>/deactivate", methods=["POST"])
+@login_required
 def api_deactivate_category(cat_id):
     """Deactivate a category — hidden from dropdowns, historical receipts keep it."""
     db = get_db()
@@ -613,6 +688,7 @@ def api_deactivate_category(cat_id):
 
 
 @dashboard_bp.route("/api/categories/<int:cat_id>/activate", methods=["POST"])
+@login_required
 def api_activate_category(cat_id):
     """Reactivate a deactivated category."""
     db = get_db()
@@ -631,6 +707,7 @@ def api_activate_category(cat_id):
 
 
 @dashboard_bp.route("/api/unknown-contacts")
+@login_required
 def api_unknown_contacts():
     """List recent unknown contact attempts."""
     db = get_db()
@@ -647,6 +724,7 @@ def api_unknown_contacts():
 
 
 @dashboard_bp.route("/ledger")
+@login_required
 def ledger_page():
     """Banking-style transaction ledger."""
     db = get_db()
@@ -667,6 +745,7 @@ def ledger_page():
 
 
 @dashboard_bp.route("/crewcert")
+@login_required
 def crewcert_home():
     """CrewCert module home — certification dashboard with summary and alerts."""
     if not check_permission(None, "crewcert", "view"):
@@ -675,6 +754,7 @@ def crewcert_home():
 
 
 @dashboard_bp.route("/crew")
+@login_required
 def crew_page():
     """CrewCert module — employee roster and certification tracking."""
     if not check_permission(None, "crewcert", "view"):
@@ -683,6 +763,7 @@ def crew_page():
 
 
 @dashboard_bp.route("/crew/<int:employee_id>")
+@login_required
 def crew_detail_page(employee_id):
     """CrewCert — individual employee profile and certifications."""
     db = get_db()
@@ -856,6 +937,7 @@ def public_verify_cert(token, cert_id):
 
 
 @dashboard_bp.route("/api/crew/employees/<int:employee_id>/qr")
+@login_required
 def api_employee_qr(employee_id):
     """Generate QR code PNG for an employee's public verify URL."""
     import qrcode
@@ -885,6 +967,7 @@ def api_employee_qr(employee_id):
 
 
 @dashboard_bp.route("/api/crew/employees/<int:employee_id>/regenerate-token", methods=["POST"])
+@login_required
 def api_regenerate_token(employee_id):
     """Regenerate public_token for an employee, invalidating old QR code."""
     db = get_db()
@@ -905,6 +988,7 @@ def api_regenerate_token(employee_id):
 
 
 @dashboard_bp.route("/api/crew/employees/<int:employee_id>/scan-log")
+@login_required
 def api_employee_scan_log(employee_id):
     """Return the last 20 QR scans for an employee."""
     db = get_db()
@@ -925,6 +1009,7 @@ def api_employee_scan_log(employee_id):
 
 
 @dashboard_bp.route("/api/crewcert/dashboard")
+@login_required
 def api_crewcert_dashboard():
     """Dashboard summary: counts, active alerts, upcoming expirations."""
     db = get_db()
@@ -1022,6 +1107,7 @@ def api_crewcert_dashboard():
 
 
 @dashboard_bp.route("/api/crewcert/alerts/<int:alert_id>/acknowledge", methods=["POST"])
+@login_required
 def api_acknowledge_alert(alert_id):
     """Acknowledge (dismiss) a cert alert."""
     db = get_db()
@@ -1040,6 +1126,7 @@ def api_acknowledge_alert(alert_id):
 
 
 @dashboard_bp.route("/api/crewcert/refresh", methods=["POST"])
+@login_required
 def api_refresh_cert_status():
     """Manually trigger a cert status refresh."""
     from src.services.cert_refresh import run_cert_status_refresh
@@ -1051,6 +1138,7 @@ def api_refresh_cert_status():
 
 
 @dashboard_bp.route("/api/cert-types")
+@login_required
 def api_cert_types():
     """List all certification types."""
     db = get_db()
@@ -1064,6 +1152,7 @@ def api_cert_types():
 
 
 @dashboard_bp.route("/api/crew/employees")
+@login_required
 def api_crew_employees():
     """Employee roster with certification badge summary.
 
@@ -1134,6 +1223,7 @@ def api_crew_employees():
 
 
 @dashboard_bp.route("/api/crew/employees/<int:employee_id>/certs")
+@login_required
 def api_employee_certs(employee_id):
     """Full certification list for one employee."""
     db = get_db()
@@ -1162,6 +1252,7 @@ def api_employee_certs(employee_id):
 
 
 @dashboard_bp.route("/api/crew/certifications", methods=["POST"])
+@login_required
 def api_add_certification():
     """Add a new certification record."""
     data = request.get_json(silent=True) or {}
@@ -1194,6 +1285,7 @@ def api_add_certification():
 
 
 @dashboard_bp.route("/api/crew/certifications/<int:cert_id>", methods=["PUT"])
+@login_required
 def api_update_certification(cert_id):
     """Update a certification record."""
     data = request.get_json(silent=True) or {}
@@ -1218,6 +1310,7 @@ def api_update_certification(cert_id):
 
 
 @dashboard_bp.route("/api/crew/certifications/<int:cert_id>/delete", methods=["POST"])
+@login_required
 def api_delete_certification(cert_id):
     """Soft-delete a certification record."""
     db = get_db()
@@ -1236,6 +1329,7 @@ def api_delete_certification(cert_id):
 
 
 @dashboard_bp.route("/projects")
+@login_required
 def projects_page():
     """Dedicated project management page."""
     db = get_db()
@@ -1255,6 +1349,7 @@ def projects_page():
 
 
 @dashboard_bp.route("/projects/<int:project_id>")
+@login_required
 def project_detail_page(project_id):
     """Dedicated project detail page — financial stat sheet."""
     db = get_db()
@@ -1314,6 +1409,7 @@ def project_detail_page(project_id):
 
 
 @dashboard_bp.route("/settings")
+@login_required
 def settings_page():
     """Settings page — email config, links to employee/project management."""
     db = get_db()
@@ -1333,6 +1429,7 @@ def settings_page():
 
 
 @dashboard_bp.route("/api/settings", methods=["GET"])
+@login_required
 def api_get_settings():
     """Get all email settings."""
     db = get_db()
@@ -1344,6 +1441,7 @@ def api_get_settings():
 
 
 @dashboard_bp.route("/api/settings", methods=["PUT"])
+@login_required
 def api_update_settings():
     """Update email settings."""
     data = request.get_json()
@@ -1370,6 +1468,7 @@ def api_update_settings():
 
 
 @dashboard_bp.route("/api/settings/send-now", methods=["POST"])
+@login_required
 def api_send_report_now():
     """Trigger an immediate email report with current settings."""
     db = get_db()
@@ -1395,6 +1494,7 @@ def api_send_report_now():
 
 
 @dashboard_bp.route("/api/dashboard/summary", methods=["GET"])
+@login_required
 def dashboard_summary():
     """Home screen data: week total, quick stats, flagged count, recent activity.
 
@@ -1483,6 +1583,7 @@ def dashboard_summary():
 
 
 @dashboard_bp.route("/api/dashboard/flagged", methods=["GET"])
+@login_required
 def flagged_receipts():
     """Return all flagged receipts for the review queue."""
     db = get_db()
@@ -1522,6 +1623,7 @@ def flagged_receipts():
 
 
 @dashboard_bp.route("/api/dashboard/flagged/<int:receipt_id>/approve", methods=["POST"])
+@login_required
 def approve_receipt(receipt_id):
     """Approve a flagged receipt — sets status to confirmed."""
     db = get_db()
@@ -1540,6 +1642,7 @@ def approve_receipt(receipt_id):
 
 
 @dashboard_bp.route("/api/dashboard/flagged/<int:receipt_id>/dismiss", methods=["POST"])
+@login_required
 def dismiss_receipt(receipt_id):
     """Dismiss a flagged receipt — sets status to rejected."""
     db = get_db()
@@ -1558,6 +1661,7 @@ def dismiss_receipt(receipt_id):
 
 
 @dashboard_bp.route("/api/dashboard/flagged/<int:receipt_id>/edit", methods=["POST"])
+@login_required
 def edit_receipt(receipt_id):
     """Edit a flagged receipt's fields, then approve it."""
     if not check_permission(None, "crewledger", "edit"):
@@ -1600,6 +1704,7 @@ def edit_receipt(receipt_id):
 
 
 @dashboard_bp.route("/api/receipts/<int:receipt_id>/edit", methods=["POST"])
+@login_required
 def api_edit_receipt(receipt_id):
     """Edit any receipt's fields with full audit trail.
 
@@ -1684,6 +1789,7 @@ def api_edit_receipt(receipt_id):
 
 
 @dashboard_bp.route("/api/receipts/<int:receipt_id>/edits", methods=["GET"])
+@login_required
 def api_receipt_edit_history(receipt_id):
     """Get the audit trail for a receipt."""
     db = get_db()
@@ -1702,6 +1808,7 @@ def api_receipt_edit_history(receipt_id):
 
 
 @dashboard_bp.route("/api/receipts/<int:receipt_id>/delete", methods=["POST"])
+@login_required
 def api_delete_receipt(receipt_id):
     """Soft-delete a receipt (set status to 'deleted')."""
     if not check_permission(None, "crewledger", "edit"):
@@ -1737,6 +1844,7 @@ def api_delete_receipt(receipt_id):
 
 
 @dashboard_bp.route("/api/receipts/<int:receipt_id>/restore", methods=["POST"])
+@login_required
 def api_restore_receipt(receipt_id):
     """Restore a deleted or duplicate receipt back to confirmed."""
     db = get_db()
@@ -1759,6 +1867,7 @@ def api_restore_receipt(receipt_id):
 
 
 @dashboard_bp.route("/api/receipts/<int:receipt_id>/duplicate", methods=["POST"])
+@login_required
 def api_mark_duplicate(receipt_id):
     """Mark a receipt as duplicate of another."""
     data = request.get_json(silent=True) or {}
@@ -1789,6 +1898,7 @@ def api_mark_duplicate(receipt_id):
 
 
 @dashboard_bp.route("/api/receipts/<int:receipt_id>/notes", methods=["PUT"])
+@login_required
 def api_update_receipt_notes(receipt_id):
     """Update the notes field on a receipt."""
     data = request.get_json(silent=True) or {}
@@ -1818,6 +1928,7 @@ def api_update_receipt_notes(receipt_id):
 
 
 @dashboard_bp.route("/api/dashboard/search", methods=["GET"])
+@login_required
 def search_receipts():
     """Search receipts with filters and pagination."""
     date_start = request.args.get("date_start")
@@ -1918,6 +2029,7 @@ def search_receipts():
 
 
 @dashboard_bp.route("/api/dashboard/employee/<int:employee_id>/receipts", methods=["GET"])
+@login_required
 def employee_receipts(employee_id):
     """Return all receipts for a given employee."""
     status_filter = request.args.get("status")

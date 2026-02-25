@@ -35,5 +35,8 @@ qrcode[pil]>=7.4
 # Background job scheduler (cert status refresh)
 apscheduler>=3.10
 
+# Google OAuth (login)
+authlib>=1.3
+
 # CSV export (Step 13) — stdlib, listed for clarity
 # csv (built-in)

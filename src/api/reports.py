@@ -11,6 +11,7 @@ import logging
 from flask import Blueprint, request, jsonify
 
 from src.database.connection import get_db
+from src.services.auth import login_required
 from src.services.report_generator import get_weekly_report_data
 from src.services.email_sender import send_weekly_report, render_report_html, render_report_plaintext
 
@@ -20,6 +21,7 @@ reports_bp = Blueprint("reports", __name__)
 
 
 @reports_bp.route("/reports/weekly/preview", methods=["GET"])
+@login_required
 def preview_weekly_report():
     """Render the weekly report as HTML in the browser for review.
 
@@ -40,6 +42,7 @@ def preview_weekly_report():
 
 
 @reports_bp.route("/reports/weekly/send", methods=["POST"])
+@login_required
 def send_weekly_report_endpoint():
     """Send the weekly report email.
 
@@ -71,6 +74,7 @@ def send_weekly_report_endpoint():
 
 
 @reports_bp.route("/reports/weekly/data", methods=["GET"])
+@login_required
 def weekly_report_data():
     """Return the raw weekly report data as JSON (for dashboard consumption).
 

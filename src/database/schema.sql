@@ -380,3 +380,22 @@ CREATE INDEX IF NOT EXISTS idx_cert_alerts_employee ON cert_alerts(employee_id);
 CREATE INDEX IF NOT EXISTS idx_cert_alerts_type     ON cert_alerts(alert_type);
 CREATE INDEX IF NOT EXISTS idx_cert_alerts_ack      ON cert_alerts(acknowledged);
 CREATE INDEX IF NOT EXISTS idx_cert_alerts_created  ON cert_alerts(created_at);
+
+-- ============================================================
+-- AUTHORIZED USERS
+-- Email whitelist for Google OAuth login.
+-- Only emails in this table can access the dashboard.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS authorized_users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    email           TEXT    UNIQUE NOT NULL,
+    name            TEXT,
+    role            TEXT    DEFAULT 'viewer'
+                           CHECK(role IN ('admin', 'manager', 'viewer')),
+    is_active       INTEGER DEFAULT 1,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    last_login      TEXT
+);
+
+INSERT OR IGNORE INTO authorized_users (email, name, role) VALUES
+    ('official.techquest.ai@gmail.com', 'Robert Cordero', 'admin');

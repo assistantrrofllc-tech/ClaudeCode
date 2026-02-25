@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, request, Response
 
 from src.database.connection import get_db
+from src.services.auth import login_required
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ def _default_week_range() -> tuple[str, str]:
 
 
 @export_bp.route("/export/quickbooks", methods=["GET"])
+@login_required
 def quickbooks_export():
     """Export receipts as a QuickBooks-ready CSV download.
 

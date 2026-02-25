@@ -18,7 +18,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from flask import Flask
+from datetime import timedelta
+
+from flask import Flask, session
 
 from config.settings import APP_HOST, APP_PORT, APP_DEBUG, SECRET_KEY
 from src.api.twilio_webhook import twilio_bp
@@ -26,6 +28,7 @@ from src.api.reports import reports_bp
 from src.api.export import export_bp
 from src.api.dashboard import dashboard_bp
 from src.api.admin_tools import admin_bp
+from src.api.auth import auth_bp, init_oauth
 
 log = logging.getLogger(__name__)
 
@@ -37,13 +40,21 @@ def create_app() -> Flask:
         static_folder=str(Path(__file__).resolve().parent.parent / "dashboard" / "static"),
     )
     app.secret_key = SECRET_KEY
+    app.permanent_session_lifetime = timedelta(hours=24)
+
+    # Google OAuth config
+    app.config["GOOGLE_CLIENT_ID"] = os.environ.get("GOOGLE_CLIENT_ID", "")
+    app.config["GOOGLE_CLIENT_SECRET"] = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
+    # Initialize OAuth
+    init_oauth(app)
 
     # Cache-busting version for static files (changes on each deploy)
     app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "18")
 
     # CrewOS module definitions — available to all templates
     CREWOS_MODULES = [
-        {"id": "crewledger", "label": "CrewLedger", "href": "/", "enabled": True},
+        {"id": "crewledger", "label": "CrewLedger", "href": "/ledger", "enabled": True},
         {"id": "crewcert", "label": "CrewCert", "href": "/crewcert", "enabled": True},
         {"id": "crewschedule", "label": "CrewSchedule", "href": "#", "enabled": False},
         {"id": "crewasset", "label": "CrewAsset", "href": "#", "enabled": False},
@@ -55,9 +66,11 @@ def create_app() -> Flask:
         return {
             "cache_version": app.config["CACHE_VERSION"],
             "crewos_modules": CREWOS_MODULES,
+            "current_user": session.get("user"),
         }
 
     # Register blueprints
+    app.register_blueprint(auth_bp)
     app.register_blueprint(twilio_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(export_bp)
