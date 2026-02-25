@@ -1,92 +1,49 @@
-# CrewOS — Session Context
+# CrewOS Build Instructions
 
-**Modular Field Operations Platform for Small Business**
-**Tech Quest LLC | Robert Cordero | Feb 2026**
+## OpenSpec Workflow — No code without an approved spec
+openspec new change <n> → /opsx:ff → wait for Robert's approval → build → test → deploy → archive
 
----
+## Context Management
+- Before structural change → /compact first
+- Never compact mid-change
+- After merge to main → compact before next change
+- Save progress to memory before context window refreshes
+- Don't stop tasks early — save state and continue
 
-## What Is This Repo
+## Lane Discipline
+- Backend agent: Python/Flask/DB only — never templates or CSS
+- Frontend agent: Templates/CSS/JS only — never Python or DB
+- QA agent: Test files and docs only — never application code
 
-This repo contains **CrewLedger** (Module 1 of CrewOS) — an SMS-based receipt and expense tracking system for trades companies. Employees text photos of receipts to a Twilio phone number. The system uses GPT-4o-mini Vision to extract data, confirms with the employee, saves everything, and reports to management and accounting.
+## CSS Rule
+No hardcoded colors. All colors via :root CSS custom properties.
 
-**Current state:** Phase 1 complete and deployed. Phase 2A (Proof Ledger) is the current priority.
+## BUILD TRACKER — MANDATORY
+Two tracker files live on this Mac's Desktop:
+- ~/crewos-build-tracker/crewos-build-tracker.html (visual dashboard)
+- ~/BUILD_TRACKER.md (summary)
 
----
+Update BOTH after every major task completion (new feature, module milestone, data import).
 
-## Key Documents — Read These First
+When Robert says "update everything" — this is end-of-shift:
+1. Update both tracker files with everything completed this session
+2. git add, commit, push all pending work
+3. Deploy: bash /opt/crewledger/deploy/update.sh
+4. Verify live
+5. Report what was committed and what changed on the tracker
 
-| Document | What It Contains |
-|---|---|
-| **CREWOS_ROADMAP.md** | Full system roadmap — all 6 modules, build timeline, business model, technical foundation, build guardrails. **This is the living document. Every build decision references it.** |
-| **openspec/specs/crewledger-baseline.md** | Foundation spec — complete technical documentation of everything built in Phase 1 (database schema, SMS pipeline, API endpoints, deployment config). |
-| **openspec/changes/** | Active feature proposals in progress. Check here before starting new work. |
+The tracker files are LOCAL ONLY — never committed, never on VPS.
 
----
+## Data Connections (required on every feature)
+Document: reads_from, writes_to, exposes, depends_on
+Never duplicate shared table data into module-private tables.
+Modules communicate via hooks, never direct calls.
 
-## Build Guardrails
+## Shared Tables (never recreate)
+employees, crews, sites, projects, schedule, documents, communications, user_permissions, cert_alerts, scope_items
 
-- **Specs before code.** Use OpenSpec (`openspec new change <name>` then `/opsx:ff`). No code without a reviewed plan.
-- **Finish one feature before starting the next.** Deploy and verify before moving on.
-- **The employee database is sacred.** Every module depends on it. Changes require review.
-- **Mobile first on every UI decision.** Field crews live on their phones.
-- **Frontend is plain HTML/CSS/JS.** No React, no build step.
-- **Real world use is the only proof.** If Kim and the field crew aren't using it, it's not done.
-
----
-
-## Current Priority: Phase 2A — Proof Ledger
-
-Build in this order:
-
-1. Receipt images — clickable, modal view
-2. Employee whitelist — unknown numbers silenced and flagged
-3. Employee management page — add/edit/deactivate from dashboard
-4. Ledger page — banking style, time filters
-5. QuickBooks export wired to current ledger filters
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Backend | Python 3.11 / Flask 3.0+ |
-| Database | SQLite (WAL mode) |
-| SMS | Twilio |
-| OCR | GPT-4o-mini Vision API |
-| Frontend | Plain HTML/CSS/JS |
-| Hosting | Hostinger KVM 2 VPS — srv1306217.hstgr.cloud |
-| Deployment | GitHub -> deploy/update.sh |
-| Spec management | OpenSpec |
-
----
-
-## Quick Reference
-
-| What | Where |
-|---|---|
-| App entry point | `src/app.py` — `create_app()` |
-| SMS webhook | `POST /webhook/sms` — `src/api/twilio_webhook.py` |
-| SMS routing | `src/messaging/sms_handler.py` |
-| OCR processing | `src/services/ocr.py` |
-| Database schema | `src/database/schema.sql` |
-| Weekly report | `src/services/report_generator.py` + `email_sender.py` |
-| Dashboard | `dashboard/templates/` + `dashboard/static/` |
-| Deploy scripts | `deploy/setup.sh`, `deploy/update.sh` |
-| Tests | `tests/` — run with `pytest` |
-| Config | `config/settings.py` — reads from `.env` |
-
----
-
-## People
-
-| Name | Role | Uses |
-|---|---|---|
-| Robert | PM / Builder | Full platform |
-| Kim | Accountant | Ledger, reports, QuickBooks export |
-| Doug | Owner | Dashboard, profitability |
-| 10-15 Field Employees | Cardholders | SMS receipt submission |
-
----
-
-*See CREWOS_ROADMAP.md for the full system roadmap, all 6 modules, and build timeline.*
+## Deploy
+- VPS: srv1306217.hstgr.cloud
+- Deploy: bash /opt/crewledger/deploy/update.sh
+- Live: https://srv1306217.hstgr.cloud
+- GitHub: merge to main after every completed change
