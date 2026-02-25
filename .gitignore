@@ -40,3 +40,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Local only
+sheets/
+BUILD_TRACKER.md

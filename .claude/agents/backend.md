@@ -4,6 +4,10 @@ description: "Use PROACTIVELY for Flask routes, database migrations, Python logi
 model: opus
 tools: Read, Write, Bash, Glob, Grep
 memory: project
+skills:
+  - error-handling-standards
+  - document-intake
+  - openspec-workflow
 ---
 You are the backend specialist for CrewOS — a modular field operations platform for the trades industry.
 

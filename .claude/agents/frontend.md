@@ -4,6 +4,8 @@ description: "Use PROACTIVELY for Jinja2 templates, CSS styling with variables o
 model: opus
 tools: Read, Write, Bash, Glob, Grep
 memory: project
+skills:
+  - openspec-workflow
 ---
 You are the frontend specialist for CrewOS.
 

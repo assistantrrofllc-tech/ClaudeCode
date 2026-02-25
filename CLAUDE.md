@@ -1,15 +1,5 @@
 # CrewOS Build Instructions
 
-## OpenSpec Workflow — No code without an approved spec
-openspec new change <n> → /opsx:ff → wait for Robert's approval → build → test → deploy → archive
-
-## Context Management
-- Before structural change → /compact first
-- Never compact mid-change
-- After merge to main → compact before next change
-- Save progress to memory before context window refreshes
-- Don't stop tasks early — save state and continue
-
 ## Lane Discipline
 - Backend agent: Python/Flask/DB only — never templates or CSS
 - Frontend agent: Templates/CSS/JS only — never Python or DB
@@ -18,32 +8,34 @@ openspec new change <n> → /opsx:ff → wait for Robert's approval → build �
 ## CSS Rule
 No hardcoded colors. All colors via :root CSS custom properties.
 
-## BUILD TRACKER — MANDATORY
-Two tracker files live on this Mac's Desktop:
-- ~/crewos-build-tracker/crewos-build-tracker.html (visual dashboard)
-- ~/BUILD_TRACKER.md (summary)
+## Commit Rules
+- All tests pass before every commit
+- Update CHANGELOG.md with what changed
+- Update README.md if scope changed
+- Merge to main → deploy → verify live
 
-Update BOTH after every major task completion (new feature, module milestone, data import).
-
-When Robert says "update everything" — this is end-of-shift:
-1. Update both tracker files with everything completed this session
-2. git add, commit, push all pending work
-3. Deploy: bash /opt/crewledger/deploy/update.sh
-4. Verify live
-5. Report what was committed and what changed on the tracker
-
-The tracker files are LOCAL ONLY — never committed, never on VPS.
+## Shared Tables (never recreate)
+employees, crews, sites, projects, schedule, documents, communications, user_permissions, cert_alerts, scope_items
 
 ## Data Connections (required on every feature)
 Document: reads_from, writes_to, exposes, depends_on
 Never duplicate shared table data into module-private tables.
 Modules communicate via hooks, never direct calls.
 
-## Shared Tables (never recreate)
-employees, crews, sites, projects, schedule, documents, communications, user_permissions, cert_alerts, scope_items
-
 ## Deploy
 - VPS: srv1306217.hstgr.cloud
 - Deploy: bash /opt/crewledger/deploy/update.sh
 - Live: https://srv1306217.hstgr.cloud
 - GitHub: merge to main after every completed change
+
+## Error Handling
+- See skills/error-handling-standards.md for full rules
+- Core rule: no silent failures. Every error notifies the system admin.
+- Never hit the same error twice. Every fix includes prevention.
+
+## Skills (load on demand)
+startup-routine, shutdown-routine, openspec-workflow, error-handling-standards, document-intake, white-label-strip
+
+## .gitignore Additions
+sheets/
+BUILD_TRACKER.md

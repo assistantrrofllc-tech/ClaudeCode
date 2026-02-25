@@ -4,6 +4,8 @@ description: "Use PROACTIVELY after backend and frontend signal completion. Runs
 model: sonnet
 tools: Read, Write, Bash, Glob, Grep
 memory: project
+skills:
+  - openspec-workflow
 ---
 You are the QA specialist for CrewOS.
 
