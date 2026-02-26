@@ -551,10 +551,7 @@ button { cursor: pointer; font-family: inherit; }
     pointer-events: none;
 }
 @media (max-width: 639px) {
-    .modal-nav { width: 36px; height: 36px; }
-    .modal-nav--prev { left: 6px; }
-    .modal-nav--next { right: 6px; }
-    .modal-nav svg { width: 16px; height: 16px; }
+    .modal-nav { display: none; }
 }
 
 /* ── Loading ───────────────────────────────────────────── */
@@ -629,6 +626,7 @@ button { cursor: pointer; font-family: inherit; }
     gap: 12px;
     margin-bottom: 12px;
 }
+.form-row--3col { grid-template-columns: 1fr 1fr 1fr; }
 .form-group label {
     display: block;
     font-size: 12px;
@@ -736,6 +734,11 @@ button { cursor: pointer; font-family: inherit; }
 .row-action-btn--edit:hover { color: #2563eb; }
 .row-action-btn--delete:hover { color: #dc2626; }
 
+/* Mobile: larger touch targets for row actions */
+@media (max-width: 639px) {
+    .row-action-btn { min-width: 44px; min-height: 44px; padding: 8px; }
+}
+
 /* ── Status Popover (Ledger) ──────────────────────────── */
 .badge-action { cursor: pointer; }
 .badge-action:hover { opacity: 0.8; }
@@ -747,6 +750,7 @@ button { cursor: pointer; font-family: inherit; }
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.12);
     min-width: 140px;
+    max-width: calc(100vw - 16px);
     overflow: hidden;
 }
 .status-popover button {
@@ -768,6 +772,11 @@ button { cursor: pointer; font-family: inherit; }
 .status-popover button.sp-confirm { color: #16a34a; }
 .status-popover button.sp-flag { color: #dc2626; }
 .status-popover button.sp-delete { color: #dc2626; border-top: 1px solid #f0f0f0; }
+
+/* Mobile: bottom-sheet style popover */
+@media (max-width: 639px) {
+    .status-popover { position: fixed; bottom: 0; left: 0; right: 0; top: auto !important; border-radius: 12px 12px 0 0; min-width: unset; width: 100%; z-index: 1001; }
+}
 
 /* ── Filter Bar (Ledger) ─────────────────────────────── */
 .filter-bar {
@@ -854,6 +863,14 @@ button { cursor: pointer; font-family: inherit; }
 .ledger-table tbody tr { cursor: pointer; }
 .ledger-table tbody tr:hover { background: #f0f4ff; }
 
+/* Mobile: horizontal scroll + hide low-priority columns */
+@media (max-width: 639px) {
+    .ledger-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .ledger-table th:nth-child(4), .ledger-table td:nth-child(4),
+    .ledger-table th:nth-child(5), .ledger-table td:nth-child(5),
+    .ledger-table th:nth-child(8), .ledger-table td:nth-child(8) { display: none; }
+}
+
 /* ── Dropdown ─────────────────────────────────────────── */
 .dropdown {
     position: relative;
@@ -927,7 +944,7 @@ button { cursor: pointer; font-family: inherit; }
     .modal-body { flex-direction: row; }
     .modal-image-wrap { flex: 1; max-height: 80vh; }
     .modal-image-wrap img { max-height: 70vh; }
-    .modal-details { flex: 0 0 320px; overflow-y: auto; border-top: none; border-left: 1px solid #e5e7eb; }
+    .modal-details { flex: 0 0 min(320px, 45%); overflow-y: auto; border-top: none; border-left: 1px solid #e5e7eb; }
     .form-row { grid-template-columns: 1fr 1fr; }
 }
 
@@ -936,6 +953,24 @@ button { cursor: pointer; font-family: inherit; }
     .data-table { font-size: 12px; }
     .data-table thead th, .data-table tbody td { padding: 8px 6px; }
     .page-header { flex-wrap: wrap; gap: 8px; }
+    .modal-close { width: 44px; height: 44px; font-size: 22px; }
+    .header-actions { width: 100%; justify-content: flex-end; }
+    .header-actions .btn { font-size: 13px; padding: 6px 12px; }
+    .form-row--3col { grid-template-columns: 1fr; }
+    .modal-footer .btn { flex: 1 1 auto; text-align: center; justify-content: center; }
+    .detail-grid { grid-template-columns: 1fr; gap: 6px; }
+
+    /* Sort row: fill width on mobile */
+    .sort-row { gap: 6px; }
+    .sort-row select { font-size: 16px; flex: 1 1 calc(50% - 6px); min-width: 0; }
+
+    /* iOS auto-zoom prevention: ensure all inputs/selects are >= 16px */
+    .form-group input, .form-group select, .sort-row select,
+    .custom-range input[type="date"], .search-bar input { font-size: 16px; }
+
+    /* Modal image constraint on mobile */
+    .modal-image-wrap { max-height: 35vh; }
+    .modal-image-wrap img { max-height: 35vh; }
 }
 
 @media (min-width: 768px) {
@@ -1268,6 +1303,7 @@ button { cursor: pointer; font-family: inherit; }
     padding: 12px 20px; border-top: 1px solid #e5e7eb;
     display: flex; gap: 8px; background: #f9fafb;
     border-radius: 0 0 12px 12px;
+    flex-wrap: wrap;
 }
 
 /* ── Crew Groups ──────────────────────────────────── */

@@ -2,6 +2,18 @@
 
 All notable changes to CrewOS / CrewLedger.
 
+## [2026-02-26] Mobile Responsiveness — Ledger/Receipts
+
+- Fix ledger table overflow on mobile (horizontal scroll + hide low-priority columns)
+- Fix iOS auto-zoom on inputs/selects (font-size 16px on mobile)
+- Fix modal nav arrows overlapping content (hidden on mobile, swipe works)
+- Fix modal details panel crushing images on tablets
+- Fix status popover rendering off-screen (bottom-sheet on mobile)
+- Fix touch targets below 44px minimum (row actions, modal close)
+- Fix modal footer buttons clipping on narrow screens
+- Fix detail grid and form rows not stacking on mobile
+- Fix line-item editor table column widths for mobile
+
 ## [2026-02-26] CrewAsset — Vehicles Module
 
 ### Added

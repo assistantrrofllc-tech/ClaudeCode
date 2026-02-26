@@ -352,7 +352,7 @@ function _buildLineItemEditor(items) {
     html += '<label class="detail-label" style="display:flex;justify-content:space-between;align-items:center;">'
         + 'Line Items <button type="button" class="btn btn--small btn--secondary" onclick="addLineItemRow()" style="font-size:11px;padding:2px 8px;">+ Add Item</button></label>';
     html += '<table class="line-items-table" id="edit-line-items" style="width:100%;">';
-    html += '<thead><tr><th>Item Name</th><th style="width:60px;">Qty</th><th style="width:80px;">Unit $</th><th style="width:80px;">Ext $</th><th style="width:30px;"></th></tr></thead>';
+    html += '<thead><tr><th>Item Name</th><th style="width:15%;">Qty</th><th style="width:20%;">Unit</th><th style="width:20%;">Total</th><th style="width:8%;"></th></tr></thead>';
     html += '<tbody>';
     if (items.length === 0) {
         html += '<tr class="li-empty-row"><td colspan="5" style="text-align:center;color:#9ca3af;font-size:12px;">No line items</td></tr>';
