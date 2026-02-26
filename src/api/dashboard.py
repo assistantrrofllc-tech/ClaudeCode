@@ -380,9 +380,8 @@ def api_add_employee():
     if not data or not data.get("first_name") or not data.get("phone_number"):
         return jsonify({"error": "first_name and phone_number are required"}), 400
 
-    phone = data["phone_number"].strip()
-    if not phone.startswith("+"):
-        phone = "+1" + phone.replace("-", "").replace(" ", "").replace("(", "").replace(")", "")
+    from src.messaging.sms_handler import normalize_phone
+    phone = normalize_phone(data["phone_number"].strip())
 
     db = get_db()
     try:
@@ -427,6 +426,11 @@ def api_update_employee(employee_id):
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400
+
+    # Normalize phone number if being updated
+    if "phone_number" in updates and updates["phone_number"]:
+        from src.messaging.sms_handler import normalize_phone
+        updates["phone_number"] = normalize_phone(updates["phone_number"])
 
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [employee_id]

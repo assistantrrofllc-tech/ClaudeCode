@@ -24,6 +24,25 @@ from src.services.ocr import extract_receipt_data, format_confirmation_message
 log = logging.getLogger(__name__)
 
 
+def normalize_phone(phone: str) -> str:
+    """Normalize a phone number to E.164 format (+1XXXXXXXXXX).
+
+    Handles: +14075551234, 4075551234, 407-555-1234, (407) 555-1234, 1-407-555-1234, etc.
+    """
+    if not phone:
+        return phone
+    digits = re.sub(r"[^\d]", "", phone)
+    if len(digits) == 10:
+        digits = "1" + digits
+    if len(digits) == 11 and digits[0] == "1":
+        return "+" + digits
+    # Already has +, return as-is if it was valid
+    if phone.startswith("+") and len(digits) == 11:
+        return "+" + digits
+    # Return original with + prefix if we can't normalize
+    return phone
+
+
 def handle_incoming_message(parsed: dict) -> str | None:
     """Route an incoming SMS/MMS and return the reply text.
 
@@ -89,10 +108,37 @@ def handle_incoming_message(parsed: dict) -> str | None:
 
 
 def _lookup_employee(db, phone: str):
-    """Find an employee by phone number. Returns Row or None."""
-    return db.execute(
-        "SELECT * FROM employees WHERE phone_number = ?", (phone,)
+    """Find an employee by phone number. Returns Row or None.
+
+    Tries exact match first, then normalized E.164 match.
+    """
+    normalized = normalize_phone(phone)
+
+    # Exact match (fast path)
+    row = db.execute(
+        "SELECT * FROM employees WHERE phone_number = ?", (normalized,)
     ).fetchone()
+    if row:
+        return row
+
+    # Fallback: strip all non-digits from both sides and compare last 10 digits
+    phone_digits = re.sub(r"[^\d]", "", phone)[-10:]
+    if len(phone_digits) == 10:
+        rows = db.execute("SELECT * FROM employees WHERE is_active = 1").fetchall()
+        for emp in rows:
+            emp_digits = re.sub(r"[^\d]", "", emp["phone_number"] or "")[-10:]
+            if emp_digits == phone_digits:
+                # Fix the stored number to E.164 for future lookups
+                db.execute(
+                    "UPDATE employees SET phone_number = ? WHERE id = ?",
+                    (normalized, emp["id"]),
+                )
+                db.commit()
+                log.info("Auto-normalized phone for employee %s: %s → %s",
+                         emp["first_name"], emp["phone_number"], normalized)
+                return emp
+
+    return None
 
 
 def _log_unknown_contact(db, phone: str, body: str, has_media: bool):
@@ -324,6 +370,14 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
     image_path = download_and_save_image(image_url, employee_id, db)
 
     if not image_path:
+        # Save receipt with Twilio URL for later retry — never lose data
+        db.execute(
+            "INSERT INTO receipts (employee_id, image_path, matched_project_name, status, flag_reason) "
+            "VALUES (?, ?, ?, 'flagged', 'Image download failed — Twilio URL saved for retry')",
+            (employee_id, image_url, body if body else None),
+        )
+        db.commit()
+        log.error("Image download failed for employee %d, saved Twilio URL: %s", employee_id, image_url)
         return (
             f"Sorry {first_name}, I had trouble downloading that image. "
             "Could you try sending it again?"

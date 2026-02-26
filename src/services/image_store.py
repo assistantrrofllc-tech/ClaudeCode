@@ -45,8 +45,21 @@ def download_and_save_image(media_url: str, employee_id: int, db) -> str | None:
         if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
             auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-        response = requests.get(media_url, auth=auth, timeout=30)
-        response.raise_for_status()
+        # Retry up to 3 times on transient failures (401/5xx)
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = requests.get(media_url, auth=auth, timeout=30)
+                response.raise_for_status()
+                break
+            except requests.RequestException as e:
+                last_error = e
+                if attempt < 2:
+                    import time
+                    time.sleep(1 * (attempt + 1))
+                    log.warning("Image download attempt %d failed, retrying: %s", attempt + 1, e)
+                else:
+                    raise
 
         file_path.write_bytes(response.content)
         log.info("Image saved: %s (%d bytes)", file_path, len(response.content))
