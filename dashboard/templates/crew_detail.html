@@ -214,11 +214,20 @@
 <!-- Cert Document Viewer Modal -->
 <div id="cert-doc-modal" class="modal" style="display:none;">
     <div class="modal-backdrop" onclick="closeCertModal()"></div>
+    <!-- Left Arrow -->
+    <button id="cert-nav-prev" class="modal-nav modal-nav--prev" style="display:none;" onclick="navigateCert(-1)" aria-label="Previous certificate">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <!-- Right Arrow -->
+    <button id="cert-nav-next" class="modal-nav modal-nav--next" style="display:none;" onclick="navigateCert(1)" aria-label="Next certificate">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
     <div class="modal-content" style="max-width:960px; height:90vh;">
         <button class="modal-close" onclick="closeCertModal()">&times;</button>
         <div style="padding:12px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
             <div>
                 <strong id="cert-doc-title"></strong>
+                <span id="cert-doc-counter" style="font-size:12px; color:var(--text-muted); margin-left:8px;"></span>
             </div>
             <a id="cert-doc-download" href="#" download class="btn btn--primary btn--small">Download</a>
         </div>
@@ -493,8 +502,20 @@ async function deleteCert(certId, typeName) {
     }
 }
 
-// ── Cert Document Modal ──
+// ── Cert Document Modal with Navigation ──
+let _certNavList = [];  // IDs of certs that have documents
+let _currentCertIdx = -1;
+let _certModalOpen = false;
+
+function _buildCertNavList() {
+    _certNavList = certsData.filter(c => c.document_path).map(c => c.id);
+}
+
 function openCertDoc(docPath, certName) {
+    _buildCertNavList();
+    const cert = certsData.find(c => c.document_path === docPath);
+    if (cert) _currentCertIdx = _certNavList.indexOf(cert.id);
+
     const modal = document.getElementById('cert-doc-modal');
     const frame = document.getElementById('cert-doc-frame');
     const dl = document.getElementById('cert-doc-download');
@@ -504,12 +525,69 @@ function openCertDoc(docPath, certName) {
     dl.href = url;
     title.textContent = (certName || 'Certificate') + ' — ' + document.getElementById('emp-name').textContent;
     modal.style.display = 'flex';
+    _certModalOpen = true;
+    _updateCertNavButtons();
 }
+
 function closeCertModal() {
     const modal = document.getElementById('cert-doc-modal');
     modal.style.display = 'none';
     document.getElementById('cert-doc-frame').src = '';
+    _certModalOpen = false;
 }
+
+function navigateCert(direction) {
+    const newIdx = _currentCertIdx + direction;
+    if (newIdx < 0 || newIdx >= _certNavList.length) return;
+    _currentCertIdx = newIdx;
+    const certId = _certNavList[_currentCertIdx];
+    const cert = certsData.find(c => c.id === certId);
+    if (!cert || !cert.document_path) return;
+
+    const url = '/certs/file/' + cert.document_path.replace('cert_files/', '');
+    document.getElementById('cert-doc-frame').src = url;
+    document.getElementById('cert-doc-download').href = url;
+    document.getElementById('cert-doc-title').textContent =
+        (cert.cert_type_name || 'Certificate') + ' — ' + document.getElementById('emp-name').textContent;
+    _updateCertNavButtons();
+}
+
+function _updateCertNavButtons() {
+    const prev = document.getElementById('cert-nav-prev');
+    const next = document.getElementById('cert-nav-next');
+    const counter = document.getElementById('cert-doc-counter');
+    if (_certNavList.length <= 1) {
+        prev.style.display = 'none';
+        next.style.display = 'none';
+        if (counter) counter.textContent = '';
+        return;
+    }
+    prev.style.display = '';
+    next.style.display = '';
+    prev.disabled = _currentCertIdx <= 0;
+    next.disabled = _currentCertIdx >= _certNavList.length - 1;
+    if (counter) counter.textContent = `${_currentCertIdx + 1} / ${_certNavList.length}`;
+}
+
+// Keyboard navigation for cert modal
+document.addEventListener('keydown', function(e) {
+    if (!_certModalOpen) return;
+    if (e.key === 'ArrowLeft') { navigateCert(-1); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { navigateCert(1); e.preventDefault(); }
+    if (e.key === 'Escape') { closeCertModal(); e.preventDefault(); }
+});
+
+// Swipe support for cert modal
+(function() {
+    let startX = 0;
+    const modal = document.getElementById('cert-doc-modal');
+    modal.addEventListener('touchstart', function(e) { startX = e.touches[0].clientX; }, {passive: true});
+    modal.addEventListener('touchend', function(e) {
+        if (!_certModalOpen) return;
+        const diff = e.changedTouches[0].clientX - startX;
+        if (Math.abs(diff) > 50) navigateCert(diff > 0 ? -1 : 1);
+    }, {passive: true});
+})();
 
 // ── QR Code ──
 async function regenerateToken() {
