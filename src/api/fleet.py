@@ -180,17 +180,44 @@ def vehicle_detail(vehicle_id):
             ORDER BY total_spend DESC
         """, (vehicle_id,)).fetchall()
 
-        # Total spend and latest mileage
+        # Aggregate stats for template
         stats_row = db.execute("""
             SELECT COALESCE(SUM(cost), 0) AS total_spend, COUNT(*) AS record_count
             FROM vehicle_maintenance WHERE vehicle_id = ?
         """, (vehicle_id,)).fetchone()
 
-        latest_mileage_row = db.execute("""
+        total_spend = round(stats_row["total_spend"], 2)
+        record_count = stats_row["record_count"]
+        avg_cost = round(total_spend / record_count, 2) if record_count > 0 else 0
+
+        # Top vendor by visit count
+        top_vendor_row = db.execute("""
+            SELECT vendor FROM vehicle_maintenance
+            WHERE vehicle_id = ? AND vendor IS NOT NULL AND vendor != ''
+            GROUP BY vendor ORDER BY COUNT(*) DESC LIMIT 1
+        """, (vehicle_id,)).fetchone()
+
+        # Mileage range (first and latest recorded)
+        mileage_first_row = db.execute("""
+            SELECT mileage FROM vehicle_maintenance
+            WHERE vehicle_id = ? AND mileage IS NOT NULL
+            ORDER BY service_date ASC, id ASC LIMIT 1
+        """, (vehicle_id,)).fetchone()
+
+        mileage_latest_row = db.execute("""
             SELECT mileage FROM vehicle_maintenance
             WHERE vehicle_id = ? AND mileage IS NOT NULL
             ORDER BY service_date DESC, id DESC LIMIT 1
         """, (vehicle_id,)).fetchone()
+
+        stats = {
+            "total_spend": total_spend,
+            "record_count": record_count,
+            "avg_cost": avg_cost,
+            "top_vendor": top_vendor_row["vendor"] if top_vendor_row else None,
+            "mileage_first": mileage_first_row["mileage"] if mileage_first_row else None,
+            "mileage_latest": mileage_latest_row["mileage"] if mileage_latest_row else None,
+        }
 
         return _render_module(
             "fleet_detail.html",
@@ -198,9 +225,7 @@ def vehicle_detail(vehicle_id):
             vehicle=dict(vehicle),
             maintenance=[dict(m) for m in maintenance],
             vendor_summary=[dict(vs) for vs in vendor_summary],
-            total_spend=round(stats_row["total_spend"], 2),
-            record_count=stats_row["record_count"],
-            latest_mileage=latest_mileage_row["mileage"] if latest_mileage_row else None,
+            stats=stats,
         )
     finally:
         db.close()

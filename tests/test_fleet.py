@@ -127,19 +127,11 @@ def test_fleet_overview_summary_stats():
 
 
 def test_vehicle_detail_page_loads():
-    """GET /fleet/1 returns 200.
-
-    BUG: fleet_detail.html references 'stats.total_spend' but fleet.py passes
-    'total_spend' as a standalone variable. Template rendering fails with
-    UndefinedError. Skipped until backend or frontend agent fixes the mismatch.
-    """
-    import pytest
+    """GET /fleet/1 returns 200."""
     setup_test_db()
     client = make_client("super_admin")
-    with pytest.raises(Exception):
-        # Template raises UndefinedError for 'stats' — either backend needs
-        # to pass a stats dict, or template needs to use standalone vars.
-        client.get("/fleet/1")
+    resp = client.get("/fleet/1")
+    assert resp.status_code == 200
 
 
 def test_vehicle_detail_404_for_missing():
