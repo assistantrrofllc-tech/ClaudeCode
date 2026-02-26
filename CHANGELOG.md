@@ -2,6 +2,35 @@
 
 All notable changes to CrewOS / CrewLedger.
 
+## [2026-02-26] — Role-Based Permissions + Legal Pages
+
+### Added
+- **4-tier role-based permissions** — super_admin, company_admin, manager, employee with route-level access control
+- **User management page** — `/admin/users` (super_admin only) for CRUD on authorized_users
+- **Legal page routes** — `/legal/privacy-policy`, `/legal/terms-and-conditions`, `/legal` (public, no auth)
+- **Data isolation** — employee role sees only own receipts, own crew record, masked contacts
+- **Contact masking** — `mask_phone()` and `mask_email()` helpers for restricted roles
+- 53 new tests (22 permission unit tests + 31 role access integration tests)
+
+### Changed
+- `src/services/permissions.py` — Full rewrite: `ROLE_HIERARCHY`, `DEFAULT_ACCESS`, `require_role()` decorator, `require_permission()` decorator
+- `src/api/auth.py` — Session stores `system_role` + `employee_id` with legacy fallbacks
+- `src/app.py` — Context processor injects role-based template vars; module tab filtering; legal routes
+- `src/api/dashboard.py` — `@require_role` on 30+ routes; data isolation for employee role
+- `src/api/admin_tools.py` — `@require_role("super_admin", "company_admin")` on all routes
+- Templates (`ledger.html`, `crew.html`, `crew_detail.html`, `home.html`) — UI elements hidden by role
+- Legal HTML files — internal links updated to use route paths
+
+### Schema
+- New columns on `authorized_users`: `system_role`, `employee_id`
+- 8 users assigned roles (2 super_admin, 3 company_admin, 3 manager)
+
+### New Files
+- `src/api/user_management.py` — User management blueprint
+- `dashboard/templates/user_management.html` — User management UI
+- `tests/test_permissions.py` — Permission unit tests
+- `tests/test_role_access.py` — Role access integration tests
+
 ## [2026-02-24] — CrewCert Module + Infrastructure
 
 9 changes shipped in one session.

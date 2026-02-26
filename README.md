@@ -75,11 +75,14 @@ Employee texts receipt photo + project name
 - **Admin Tools** — PDF cert splitter, bulk CSV cert import with fuzzy name matching
 - **Receipt Detail** — Full details with receipt photo, edit form, audit history
 
-### Permissions
-- Module-level access control (none/view/edit/admin)
-- System roles (super_admin, company_admin, manager, employee)
-- Permission-gated receipt editing (edit controls hidden for view-only users)
-- Defaults to allow when no auth session (scaffolding for future auth)
+### Permissions & Role-Based Access
+- 4-tier role system: super_admin > company_admin > manager > employee
+- Route-level protection via `@require_role()` decorators on 30+ endpoints
+- Module-level access control (none/view/edit/admin) per role
+- Data isolation: employee role sees only own receipts and crew record
+- Contact masking: phone/email hidden for restricted roles
+- User management page (super_admin only) for managing authorized users
+- Permission-gated UI: edit/export/admin controls hidden by role
 
 ### QuickBooks CSV Export
 - One-click export with columns: Date, Vendor, Account, Amount, Tax, Total, Payment Method, Memo, Line Items
@@ -107,12 +110,13 @@ crewos/
 │   │   └── schema.sql         # Full database schema + seed data
 │   ├── api/
 │   │   ├── twilio_webhook.py  # POST /webhook/sms — Twilio inbound
-│   │   ├── dashboard.py       # Dashboard routes + APIs (~1600 lines)
+│   │   ├── dashboard.py       # Dashboard routes + APIs (~2300 lines)
 │   │   ├── admin_tools.py     # PDF splitter + CSV cert import
+│   │   ├── user_management.py # User CRUD (super_admin only)
 │   │   └── reports.py         # Weekly report endpoints
 │   ├── services/
 │   │   ├── ocr.py             # GPT-4o-mini Vision receipt extraction
-│   │   ├── permissions.py     # Permission checking (check_permission)
+│   │   ├── permissions.py     # Role hierarchy, access control, decorators
 │   │   ├── report_generator.py
 │   │   └── email_sender.py
 │   └── messaging/
@@ -126,7 +130,8 @@ crewos/
 ├── data/                      # SQLite database (gitignored)
 ├── scripts/
 │   └── import_sms_backup.py   # SMS Backup & Restore XML importer
-├── tests/                     # 137 pytest tests
+├── legal/                     # Privacy policy, terms (served at /legal/*)
+├── tests/                     # 218 pytest tests
 └── openspec/                  # Specs and change archives
 ```
 
@@ -196,7 +201,7 @@ source .venv/bin/activate
 python -m pytest tests/ -v
 ```
 
-**136 tests** should pass (1 known skip: openpyxl not installed).
+**218 tests** should pass (1 known skip: openpyxl not installed).
 
 ## API Endpoints
 
@@ -204,7 +209,7 @@ python -m pytest tests/ -v
 |---|---|---|
 | POST | `/webhook/sms` | Twilio inbound SMS/MMS webhook |
 | GET | `/health` | Health check |
-| GET | `/` | Dashboard (HTML) |
+| GET | `/` | Home screen (HTML) |
 | GET | `/api/dashboard/summary` | Home screen data (week totals, breakdowns) |
 | GET | `/api/dashboard/flagged` | Flagged receipt queue |
 | POST | `/api/dashboard/flagged/<id>/approve` | Approve a flagged receipt |
@@ -218,6 +223,9 @@ python -m pytest tests/ -v
 | GET | `/reports/weekly/preview` | Preview weekly report (HTML) |
 | GET | `/reports/weekly/data` | Weekly report data (JSON) |
 | POST | `/reports/weekly/send` | Send weekly report email |
+| GET | `/admin/users` | User management (super_admin) |
+| GET | `/legal/privacy-policy` | Privacy policy (public) |
+| GET | `/legal/terms-and-conditions` | Terms and conditions (public) |
 
 ## Operating Costs
 
@@ -233,7 +241,7 @@ At full scale (15 employees, ~300 receipts/month):
 2. **Phase 2** — Weekly email reports, QuickBooks CSV export ✅
 3. **CrewCert** — Employee roster, certification tracking, admin tools ✅
 4. **CrewComms** — Communication logging (DB scaffold complete)
-5. **Permissions** — Module-level access control (framework complete)
+5. **Permissions** — 4-tier role-based access control (deployed, live) ✅
 6. **Phase 3** — Cost intelligence, anomaly detection, vendor comparison
 
 ## License

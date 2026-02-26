@@ -15,7 +15,7 @@ No hardcoded colors. All colors via :root CSS custom properties.
 - Merge to main → deploy → verify live
 
 ## Shared Tables (never recreate)
-employees, crews, sites, projects, schedule, documents, communications, user_permissions, cert_alerts, scope_items
+employees, crews, sites, projects, schedule, documents, communications, user_permissions, cert_alerts, scope_items, authorized_users
 
 ## Data Connections (required on every feature)
 Document: reads_from, writes_to, exposes, depends_on
