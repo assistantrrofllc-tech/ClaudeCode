@@ -20,7 +20,7 @@ load_dotenv()
 
 from datetime import timedelta
 
-from flask import Flask, session
+from flask import Flask, send_from_directory, session
 
 from config.settings import APP_HOST, APP_PORT, APP_DEBUG, SECRET_KEY
 from src.api.twilio_webhook import twilio_bp
@@ -101,6 +101,21 @@ def create_app() -> Flask:
     @app.route("/health")
     def health():
         return {"status": "ok", "service": "crewledger"}
+
+    # Legal pages (public, no auth required)
+    legal_dir = str(Path(__file__).resolve().parent.parent / "legal")
+
+    @app.route("/legal/privacy-policy")
+    def legal_privacy():
+        return send_from_directory(legal_dir, "privacy-policy.html")
+
+    @app.route("/legal/terms-and-conditions")
+    def legal_terms():
+        return send_from_directory(legal_dir, "terms.html")
+
+    @app.route("/legal")
+    def legal_index():
+        return send_from_directory(legal_dir, "index.html")
 
     # Start cert status refresh scheduler (daily at 6am + on startup)
     # Skip during testing to avoid spawning threads per test
