@@ -2,6 +2,16 @@
 
 All notable changes to CrewOS / CrewLedger.
 
+## [2026-02-26] CrewLedger Mobile Cleanup + Module Access Control
+
+- **Mobile optimizations:** Compact ledger layout on small screens (hide status/actions columns, truncate vendor names)
+- **Receipt viewer:** Fixed image overflow on modal, added receipt counter indicator ("3 of 12")
+- **Module access control:** `require_module_access` decorator on all module routes, dynamic tab filtering by role
+- **Header redesign:** Updated Sign Out text, added settings gear icon
+- **Edit History:** Hidden from UI (backend audit trail preserved)
+- **Tests:** 235 passing, no regressions
+- **Files changed:** 11 files (+217/-33 lines)
+
 ## [2026-02-26] QA Audit Final Fixes — Security & Mobile
 
 - **CRITICAL security fix:** Add `@login_required` decorator to cert document serving route
