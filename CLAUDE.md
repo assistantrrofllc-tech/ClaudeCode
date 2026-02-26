@@ -14,6 +14,16 @@ No hardcoded colors. All colors via :root CSS custom properties.
 - Update README.md if scope changed
 - Merge to main → deploy → verify live
 
+## Scribe Agent — MANDATORY
+After EVERY commit, spawn the scribe agent (`.claude/agents/scribe.md`) in background.
+Before EVERY context compact, spawn the scribe agent.
+At end of EVERY session (shutdown), spawn the scribe agent.
+The scribe updates these files — no exceptions:
+1. Build journal: `/Users/kaiclawd/Desktop/crewos-build-journal.md`
+2. HTML tracker: `/Users/kaiclawd/Desktop/CLAUDE/PROJECTS/crewos-tracker/index.html`
+3. CHANGELOG.md in repo
+If you skip the scribe, changes get lost. This is top priority.
+
 ## Shared Tables (never recreate)
 employees, crews, sites, projects, schedule, documents, communications, user_permissions, cert_alerts, scope_items, authorized_users
 

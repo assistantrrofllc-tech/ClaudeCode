@@ -69,15 +69,16 @@ def create_app() -> Flask:
         user_role = user.get("system_role", "employee") if user else "employee"
         role_level = {"super_admin": 4, "company_admin": 3, "manager": 2, "employee": 1}.get(user_role, 1)
 
-        # Filter modules — employee only sees enabled modules with view access
-        visible_modules = CREWOS_MODULES
-        if user and user_role == "employee":
-            from src.services.permissions import DEFAULT_ACCESS
-            emp_access = DEFAULT_ACCESS.get("employee", {})
+        # Filter modules — hide modules the user has no access to
+        # super_admin always sees everything
+        if user and user_role != "super_admin":
+            from src.services.permissions import check_permission
             visible_modules = [
                 m for m in CREWOS_MODULES
-                if emp_access.get(m["id"], "none") != "none" or not m["enabled"]
+                if not m["enabled"] or check_permission(None, m["id"], "view")
             ]
+        else:
+            visible_modules = CREWOS_MODULES
 
         return {
             "cache_version": app.config["CACHE_VERSION"],

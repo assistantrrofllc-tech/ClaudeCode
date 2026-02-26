@@ -25,7 +25,7 @@ from src.database.connection import get_db
 from src.services.auth import login_required
 from src.services.cert_status import calculate_cert_status, days_until_expiry
 from src.services.permissions import (
-    check_permission, require_role, get_current_role,
+    check_permission, require_role, require_module_access, get_current_role,
     get_current_employee_id, is_own_data_only, has_minimum_role,
     mask_phone, mask_email,
 )
@@ -137,12 +137,43 @@ def home():
         ).fetchone()
         expiring_certs = row["cnt"] if row else 0
 
+        # CrewAsset stats
+        row = db.execute("SELECT COUNT(*) as cnt FROM vehicles").fetchone()
+        vehicle_count = row["cnt"] if row else 0
+
+        # Receipt count this month (for module_stats)
+        row = db.execute(
+            f"""SELECT COUNT(*) as cnt FROM receipts
+               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
+            emp_params_month,
+        ).fetchone()
+        receipts_this_month = row["cnt"] if row else 0
+
+        # Consolidated module stats dict for home page cards
+        module_stats = {
+            "crewledger": {
+                "receipts_this_week": receipts_this_week,
+                "receipts_this_month": receipts_this_month,
+                "spend_this_month": spend_this_month,
+            },
+            "crewcert": {
+                "employee_count": employee_count,
+                "expiring_certs": expiring_certs,
+            },
+            "crewasset": {
+                "vehicle_count": vehicle_count,
+            },
+        }
+
         return render_template(
             "home.html",
             receipts_this_week=receipts_this_week,
             spend_this_month=spend_this_month,
             employee_count=employee_count,
             expiring_certs=expiring_certs,
+            vehicle_count=vehicle_count,
+            receipts_this_month=receipts_this_month,
+            module_stats=module_stats,
         )
     finally:
         db.close()
@@ -150,6 +181,7 @@ def home():
 
 @dashboard_bp.route("/ledger/dashboard")
 @login_required
+@require_module_access("crewledger")
 def ledger_dashboard():
     """CrewLedger dashboard — spend summary, flagged receipts, recent activity."""
     db = get_db()
@@ -791,6 +823,7 @@ def api_unknown_contacts():
 
 @dashboard_bp.route("/ledger")
 @login_required
+@require_module_access("crewledger")
 def ledger_page():
     """Banking-style transaction ledger."""
     db = get_db()
@@ -812,24 +845,23 @@ def ledger_page():
 
 @dashboard_bp.route("/crewcert")
 @login_required
+@require_module_access("crewcert")
 def crewcert_home():
     """CrewCert module home — certification dashboard with summary and alerts."""
-    if not check_permission(None, "crewcert", "view"):
-        abort(403)
     return _render_module("crewcert_dashboard.html", "crewcert", "dashboard")
 
 
 @dashboard_bp.route("/crew")
 @login_required
+@require_module_access("crewcert")
 def crew_page():
     """CrewCert module — employee roster and certification tracking."""
-    if not check_permission(None, "crewcert", "view"):
-        abort(403)
     return _render_module("crew.html", "crewcert", "employees")
 
 
 @dashboard_bp.route("/crew/<int:employee_id>")
 @login_required
+@require_module_access("crewcert")
 def crew_detail_page(employee_id):
     """CrewCert — individual employee profile and certifications."""
     # Employee role can only view their own profile

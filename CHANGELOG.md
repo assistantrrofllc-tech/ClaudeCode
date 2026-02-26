@@ -2,6 +2,14 @@
 
 All notable changes to CrewOS / CrewLedger.
 
+## [2026-02-26] QA Audit Final Fixes — Security & Mobile
+
+- **CRITICAL security fix:** Add `@login_required` decorator to cert document serving route
+- **CRITICAL mobile fix:** Wrap tables in `overflow-x: auto` on crew_detail, projects, user_management, employees
+- **CSS fix:** Align project detail stat cards (label classname correction)
+- **Home page:** Update CrewAsset card from disabled "Coming Soon" to live `/fleet/` link
+- All 235 tests passing, no regressions
+
 ## [2026-02-26] Mobile Responsiveness — Ledger/Receipts
 
 - Fix ledger table overflow on mobile (horizontal scroll + hide low-priority columns)

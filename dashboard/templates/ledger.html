@@ -205,11 +205,12 @@ function renderLedger(data) {
         body.innerHTML = '<tr><td colspan="9" class="loading">No transactions found</td></tr>';
         return;
     }
+    var isMobile = window.innerWidth <= 768;
     var html = '';
     for (var i = 0; i < data.length; i++) {
         var r = data[i];
         html += '<tr onclick="openReceiptModal(' + r.id + ')">';
-        html += '<td>' + formatDate(r.purchase_date || r.created_at) + '</td>';
+        html += '<td>' + (isMobile ? formatDateShort(r.purchase_date || r.created_at) : formatDate(r.purchase_date || r.created_at)) + '</td>';
         html += '<td>' + escapeHtml(r.employee_name || '?') + '</td>';
         html += '<td>' + escapeHtml(r.vendor_name || 'Unknown') + '</td>';
         html += '<td>' + escapeHtml(r.project_name || r.matched_project_name || '—') + '</td>';
@@ -502,6 +503,15 @@ function saveNewReceipt() {
             msg.innerHTML = '<span style="color:#dc2626;">' + (d.error || 'Failed') + '</span>';
         }
     });
+}
+
+function formatDateShort(dateStr) {
+    if (!dateStr) return '—';
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return parts[1] + '/' + parts[2] + '/' + parts[0].slice(-2);
+    }
+    return dateStr;
 }
 
 // Load on page ready

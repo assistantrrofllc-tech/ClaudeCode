@@ -14,7 +14,7 @@ The require_role() and require_permission() decorators protect routes.
 
 from functools import wraps
 
-from flask import abort, session
+from flask import abort, redirect, session, url_for
 
 from src.database.connection import get_db
 
@@ -221,6 +221,30 @@ def require_permission(module: str, level: str):
         def decorated(*args, **kwargs):
             if not check_permission(None, module, level):
                 abort(403)
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
+def require_module_access(module: str):
+    """Decorator that redirects to home if the user lacks view access to a module.
+
+    super_admin always passes. Other roles are checked against DEFAULT_ACCESS
+    and per-user overrides via check_permission().
+
+    Usage:
+        @require_module_access("crewledger")
+        def ledger_page():
+            ...
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            role = get_current_role()
+            if role == "super_admin":
+                return f(*args, **kwargs)
+            if not check_permission(None, module, "view"):
+                return redirect("/")
             return f(*args, **kwargs)
         return decorated
     return decorator

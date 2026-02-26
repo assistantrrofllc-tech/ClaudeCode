@@ -14,8 +14,8 @@ from flask import (
 from src.database.connection import get_db
 from src.services.auth import login_required
 from src.services.permissions import (
-    check_permission, require_role, require_permission, get_current_role,
-    get_current_employee_id, is_own_data_only, has_minimum_role,
+    check_permission, require_role, require_permission, require_module_access,
+    get_current_role, get_current_employee_id, is_own_data_only, has_minimum_role,
 )
 
 log = logging.getLogger(__name__)
@@ -57,6 +57,7 @@ def _render_module(template, active_subnav="", **kwargs):
 
 @fleet_bp.route("/fleet/")
 @login_required
+@require_module_access("crewasset")
 def fleet_overview():
     """Fleet overview — all vehicles with aggregated maintenance stats.
 
@@ -155,6 +156,7 @@ def fleet_overview():
 
 @fleet_bp.route("/fleet/<int:vehicle_id>")
 @login_required
+@require_module_access("crewasset")
 def vehicle_detail(vehicle_id):
     """Vehicle detail page — vehicle info + maintenance history."""
     db = get_db()

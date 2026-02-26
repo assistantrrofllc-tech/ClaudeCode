@@ -90,9 +90,9 @@ function openReceiptModal(receiptId) {
             // Footer with edit/history/delete buttons
             if (footer) {
                 var isHidden = (data.status === 'deleted' || data.status === 'duplicate');
-                var btns = ' <button class="btn btn--small btn--secondary" onclick="showEditHistory(' + receiptId + ')">Edit History</button>';
+                var btns = '';
                 if (CAN_EDIT) {
-                    btns = '<button class="btn btn--small btn--secondary" onclick="toggleEditForm(' + receiptId + ')">Edit Receipt</button>' + btns;
+                    btns = '<button class="btn btn--small btn--secondary" onclick="toggleEditForm(' + receiptId + ')">Edit Receipt</button>';
                     if (isHidden) {
                         btns += ' <button class="btn btn--small btn--success" onclick="restoreReceipt(' + receiptId + ')">Restore</button>';
                     } else {
@@ -130,11 +130,13 @@ function closeReceiptModal() {
 function _updateNavButtons() {
     var prevBtn = document.getElementById('modal-nav-prev');
     var nextBtn = document.getElementById('modal-nav-next');
+    var counter = document.getElementById('modal-receipt-counter');
     if (!prevBtn || !nextBtn) return;
 
     if (!_receiptNavList || _receiptNavList.length < 2 || _currentReceiptId === null) {
         prevBtn.style.display = 'none';
         nextBtn.style.display = 'none';
+        if (counter) counter.style.display = 'none';
         return;
     }
 
@@ -142,6 +144,7 @@ function _updateNavButtons() {
     if (idx === -1) {
         prevBtn.style.display = 'none';
         nextBtn.style.display = 'none';
+        if (counter) counter.style.display = 'none';
         return;
     }
 
@@ -149,6 +152,11 @@ function _updateNavButtons() {
     nextBtn.style.display = 'flex';
     prevBtn.disabled = (idx === 0);
     nextBtn.disabled = (idx === _receiptNavList.length - 1);
+
+    if (counter) {
+        counter.textContent = (idx + 1) + ' of ' + _receiptNavList.length;
+        counter.style.display = '';
+    }
 }
 
 function navigateReceipt(direction) {

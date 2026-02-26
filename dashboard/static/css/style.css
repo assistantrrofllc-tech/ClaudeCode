@@ -66,7 +66,9 @@ button { cursor: pointer; font-family: inherit; }
     letter-spacing: -0.3px;
     margin-right: 24px;
     white-space: nowrap;
+    text-decoration: none;
 }
+.module-bar__brand:hover { text-decoration: none; color: #fff; }
 .module-bar__tabs {
     display: flex;
     gap: 2px;
@@ -96,19 +98,18 @@ button { cursor: pointer; font-family: inherit; }
 }
 .module-bar__tab--disabled:hover { background: none; color: rgba(255,255,255,0.25); }
 
-/* Home button in module bar */
-.module-bar__home {
+/* Settings icon in module bar */
+.module-bar__settings {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: rgba(255,255,255,0.7);
-    margin-right: 8px;
-    padding: 6px;
+    color: rgba(255,255,255,0.5);
+    padding: 4px;
     border-radius: var(--radius-sm);
     transition: color 0.15s, background 0.15s;
     text-decoration: none;
 }
-.module-bar__home:hover { color: #fff; background: rgba(255,255,255,0.1); text-decoration: none; }
+.module-bar__settings:hover { color: #fff; background: rgba(255,255,255,0.1); text-decoration: none; }
 
 /* User avatar + logout in module bar */
 .module-bar__user {
@@ -136,14 +137,18 @@ button { cursor: pointer; font-family: inherit; }
 .module-bar__logout {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    gap: 4px;
     color: rgba(255,255,255,0.5);
     padding: 4px;
     border-radius: var(--radius-sm);
     transition: color 0.15s, background 0.15s;
     text-decoration: none;
+    font-size: 12px;
+    white-space: nowrap;
 }
 .module-bar__logout:hover { color: #fff; background: rgba(255,255,255,0.1); text-decoration: none; }
+.module-bar__logout-text { color: rgba(255,255,255,0.5); }
+.module-bar__logout:hover .module-bar__logout-text { color: #fff; }
 
 /* ── Home Screen Module Cards ────────────────────────── */
 .home-grid {
@@ -474,6 +479,7 @@ button { cursor: pointer; font-family: inherit; }
     justify-content: center;
     min-height: 200px;
     padding: 16px;
+    overflow: hidden;
 }
 .modal-image-wrap img {
     max-width: 100%;
@@ -866,9 +872,20 @@ button { cursor: pointer; font-family: inherit; }
 /* Mobile: horizontal scroll + hide low-priority columns */
 @media (max-width: 639px) {
     .ledger-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .ledger-table th:nth-child(4), .ledger-table td:nth-child(4),
+}
+
+/* Compact mobile ledger: show Date, Employee, Vendor, Project, Amount only */
+@media (max-width: 768px) {
     .ledger-table th:nth-child(5), .ledger-table td:nth-child(5),
-    .ledger-table th:nth-child(8), .ledger-table td:nth-child(8) { display: none; }
+    .ledger-table th:nth-child(7), .ledger-table td:nth-child(7),
+    .ledger-table th:nth-child(8), .ledger-table td:nth-child(8),
+    .ledger-table th:nth-child(9), .ledger-table td:nth-child(9) { display: none; }
+
+    /* Vendor name truncation */
+    .ledger-table td:nth-child(3) { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Bold amount */
+    .ledger-table .cell-amount { font-weight: 700; }
 }
 
 /* ── Dropdown ─────────────────────────────────────────── */
@@ -958,7 +975,9 @@ button { cursor: pointer; font-family: inherit; }
     .header-actions .btn { font-size: 13px; padding: 6px 12px; }
     .form-row--3col { grid-template-columns: 1fr; }
     .modal-footer .btn { flex: 1 1 auto; text-align: center; justify-content: center; }
-    .detail-grid { grid-template-columns: 1fr; gap: 6px; }
+    .detail-grid { grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+    .detail-grid > div { min-width: 0; }
+    .modal-details h3 { font-size: 16px; margin-bottom: 10px; }
 
     /* Sort row: fill width on mobile */
     .sort-row { gap: 6px; }
@@ -969,8 +988,11 @@ button { cursor: pointer; font-family: inherit; }
     .custom-range input[type="date"], .search-bar input { font-size: 16px; }
 
     /* Modal image constraint on mobile */
-    .modal-image-wrap { max-height: 35vh; }
+    .modal-image-wrap { max-height: 35vh; overflow: hidden; }
     .modal-image-wrap img { max-height: 35vh; }
+
+    /* Hide Sign Out text on mobile, keep icon only */
+    .module-bar__logout-text { display: none; }
 }
 
 @media (min-width: 768px) {
