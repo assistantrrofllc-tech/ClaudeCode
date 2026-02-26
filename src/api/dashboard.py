@@ -2021,6 +2021,59 @@ def api_update_receipt_notes(receipt_id):
         db.close()
 
 
+@dashboard_bp.route("/api/receipts/<int:receipt_id>/line-items", methods=["PUT"])
+@login_required
+@require_role("super_admin", "company_admin")
+def api_update_line_items(receipt_id):
+    """Replace all line items on a receipt."""
+    data = request.get_json(silent=True) or {}
+    items = data.get("line_items", [])
+
+    db = get_db()
+    try:
+        receipt = db.execute("SELECT id FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        if not receipt:
+            return jsonify({"error": "Receipt not found"}), 404
+
+        # Get old line items for audit trail
+        old_items = db.execute(
+            "SELECT item_name, quantity, unit_price, extended_price FROM line_items WHERE receipt_id = ? ORDER BY id",
+            (receipt_id,),
+        ).fetchall()
+        old_summary = "; ".join(
+            f"{i['item_name']} x{i['quantity']} @{i['extended_price']}" for i in old_items
+        ) if old_items else "(none)"
+
+        # Delete existing and insert new
+        db.execute("DELETE FROM line_items WHERE receipt_id = ?", (receipt_id,))
+        for item in items:
+            name = (item.get("item_name") or "").strip()
+            if not name:
+                continue
+            qty = float(item.get("quantity", 1) or 1)
+            unit_price = float(item.get("unit_price", 0) or 0)
+            ext_price = float(item.get("extended_price", 0) or 0) or round(qty * unit_price, 2)
+            db.execute(
+                "INSERT INTO line_items (receipt_id, item_name, quantity, unit_price, extended_price) VALUES (?, ?, ?, ?, ?)",
+                (receipt_id, name, qty, unit_price, ext_price),
+            )
+
+        # Audit trail
+        new_summary = "; ".join(
+            f"{i.get('item_name', '')} x{i.get('quantity', 1)} @{i.get('extended_price', 0)}"
+            for i in items if (i.get("item_name") or "").strip()
+        ) or "(none)"
+        db.execute(
+            "INSERT INTO receipt_edits (receipt_id, field_changed, old_value, new_value, edited_by) VALUES (?, ?, ?, ?, ?)",
+            (receipt_id, "line_items", old_summary, new_summary, "dashboard"),
+        )
+
+        db.commit()
+        return jsonify({"status": "updated", "id": receipt_id, "item_count": len(items)})
+    finally:
+        db.close()
+
+
 # ── Search & Filter (paginated) ──────────────────────────────
 
 

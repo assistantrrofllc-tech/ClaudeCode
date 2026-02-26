@@ -47,6 +47,9 @@ function openReceiptModal(receiptId) {
             html += detailField('Tax', formatMoney(data.tax));
             html += detailField('Total', '<strong>' + formatMoney(data.total) + '</strong>');
             html += detailField('Payment', data.payment_method);
+            if (data.vendor_city || data.vendor_state) {
+                html += detailField('Location', escapeHtml((data.vendor_city || '') + (data.vendor_city && data.vendor_state ? ', ' : '') + (data.vendor_state || '')));
+            }
             if (data.flag_reason) {
                 html += detailField('Flag Reason', '<span style="color:#dc2626">' + escapeHtml(data.flag_reason) + '</span>');
             }
@@ -318,6 +321,10 @@ function toggleEditForm(receiptId) {
                     + '<div class="form-group"><label>Date</label><input type="date" id="edit-date" value="' + (data.purchase_date || '') + '"></div>'
                     + '</div>'
                     + '<div class="form-row">'
+                    + '<div class="form-group"><label>Vendor City</label><input type="text" id="edit-vendor-city" value="' + escapeAttr(data.vendor_city || '') + '"></div>'
+                    + '<div class="form-group"><label>Vendor State</label><input type="text" id="edit-vendor-state" value="' + escapeAttr(data.vendor_state || '') + '" maxlength="2" placeholder="FL"></div>'
+                    + '</div>'
+                    + '<div class="form-row">'
                     + '<div class="form-group"><label>Subtotal</label><input type="number" step="0.01" id="edit-subtotal" value="' + (data.subtotal || '') + '"></div>'
                     + '<div class="form-group"><label>Tax</label><input type="number" step="0.01" id="edit-tax" value="' + (data.tax || '') + '"></div>'
                     + '<div class="form-group"><label>Total</label><input type="number" step="0.01" id="edit-total" value="' + (data.total || '') + '"></div>'
@@ -327,6 +334,7 @@ function toggleEditForm(receiptId) {
                     + '<div class="form-group"><label>Project</label>' + _buildProjectSelect('edit-project', data.project_id) + '</div>'
                     + '<div class="form-group"><label>Category</label>' + _buildCategorySelect('edit-category', data.category_id) + '</div>'
                     + '</div>'
+                    + _buildLineItemEditor(data.line_items || [])
                     + '<div style="margin-top:8px;">'
                     + '<button class="btn btn--small btn--primary" onclick="saveReceiptEdit(' + receiptId + ')">Save Changes</button>'
                     + ' <button class="btn btn--small btn--secondary" onclick="document.getElementById(\'receipt-edit-form\').remove()">Cancel</button>'
@@ -339,6 +347,70 @@ function toggleEditForm(receiptId) {
     });
 }
 
+function _buildLineItemEditor(items) {
+    var html = '<div class="line-item-editor" style="margin-top:12px;">';
+    html += '<label class="detail-label" style="display:flex;justify-content:space-between;align-items:center;">'
+        + 'Line Items <button type="button" class="btn btn--small btn--secondary" onclick="addLineItemRow()" style="font-size:11px;padding:2px 8px;">+ Add Item</button></label>';
+    html += '<table class="line-items-table" id="edit-line-items" style="width:100%;">';
+    html += '<thead><tr><th>Item Name</th><th style="width:60px;">Qty</th><th style="width:80px;">Unit $</th><th style="width:80px;">Ext $</th><th style="width:30px;"></th></tr></thead>';
+    html += '<tbody>';
+    if (items.length === 0) {
+        html += '<tr class="li-empty-row"><td colspan="5" style="text-align:center;color:#9ca3af;font-size:12px;">No line items</td></tr>';
+    }
+    for (var i = 0; i < items.length; i++) {
+        html += _lineItemRow(items[i]);
+    }
+    html += '</tbody></table></div>';
+    return html;
+}
+
+function _lineItemRow(item) {
+    return '<tr class="li-row">'
+        + '<td><input type="text" class="li-name" value="' + escapeAttr(item.item_name || '') + '" style="width:100%;"></td>'
+        + '<td><input type="number" class="li-qty" value="' + (item.quantity || 1) + '" step="any" min="0" style="width:100%;" onchange="calcLineItemExt(this)"></td>'
+        + '<td><input type="number" class="li-unit" value="' + (item.unit_price || 0) + '" step="0.01" min="0" style="width:100%;" onchange="calcLineItemExt(this)"></td>'
+        + '<td><input type="number" class="li-ext" value="' + (item.extended_price || 0) + '" step="0.01" style="width:100%;"></td>'
+        + '<td><button type="button" onclick="this.closest(\'tr\').remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px;" title="Remove">&times;</button></td>'
+        + '</tr>';
+}
+
+function addLineItemRow() {
+    var tbody = document.querySelector('#edit-line-items tbody');
+    var empty = tbody.querySelector('.li-empty-row');
+    if (empty) empty.remove();
+    var tr = document.createElement('tr');
+    tr.className = 'li-row';
+    tr.innerHTML = '<td><input type="text" class="li-name" value="" style="width:100%;"></td>'
+        + '<td><input type="number" class="li-qty" value="1" step="any" min="0" style="width:100%;" onchange="calcLineItemExt(this)"></td>'
+        + '<td><input type="number" class="li-unit" value="0" step="0.01" min="0" style="width:100%;" onchange="calcLineItemExt(this)"></td>'
+        + '<td><input type="number" class="li-ext" value="0" step="0.01" style="width:100%;"></td>'
+        + '<td><button type="button" onclick="this.closest(\'tr\').remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px;" title="Remove">&times;</button></td>';
+    tbody.appendChild(tr);
+}
+
+function calcLineItemExt(el) {
+    var row = el.closest('tr');
+    var qty = parseFloat(row.querySelector('.li-qty').value) || 0;
+    var unit = parseFloat(row.querySelector('.li-unit').value) || 0;
+    row.querySelector('.li-ext').value = (qty * unit).toFixed(2);
+}
+
+function _collectLineItems() {
+    var rows = document.querySelectorAll('#edit-line-items .li-row');
+    var items = [];
+    for (var i = 0; i < rows.length; i++) {
+        var name = rows[i].querySelector('.li-name').value.trim();
+        if (!name) continue;
+        items.push({
+            item_name: name,
+            quantity: parseFloat(rows[i].querySelector('.li-qty').value) || 1,
+            unit_price: parseFloat(rows[i].querySelector('.li-unit').value) || 0,
+            extended_price: parseFloat(rows[i].querySelector('.li-ext').value) || 0,
+        });
+    }
+    return items;
+}
+
 function saveReceiptEdit(receiptId) {
     var msg = document.getElementById('edit-msg');
     msg.innerHTML = '<span style="color:#6b7280;">Saving...</span>';
@@ -349,6 +421,8 @@ function saveReceiptEdit(receiptId) {
     var payload = {
         employee_id: empEl ? parseInt(empEl.value) : null,
         vendor_name: document.getElementById('edit-vendor').value,
+        vendor_city: document.getElementById('edit-vendor-city').value,
+        vendor_state: document.getElementById('edit-vendor-state').value,
         purchase_date: document.getElementById('edit-date').value,
         subtotal: parseFloat(document.getElementById('edit-subtotal').value) || 0,
         tax: parseFloat(document.getElementById('edit-tax').value) || 0,
@@ -358,17 +432,29 @@ function saveReceiptEdit(receiptId) {
         category_id: catEl ? (parseInt(catEl.value) || null) : null,
     };
 
-    fetch('/api/receipts/' + receiptId + '/edit', {
+    // Save receipt fields
+    var receiptSave = fetch('/api/receipts/' + receiptId + '/edit', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload),
-    })
-    .then(function(resp) { return resp.json(); })
-    .then(function(d) {
+    }).then(function(resp) { return resp.json(); });
+
+    // Save line items if editor exists
+    var lineItemTable = document.getElementById('edit-line-items');
+    var lineItemSave = lineItemTable
+        ? fetch('/api/receipts/' + receiptId + '/line-items', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ line_items: _collectLineItems() }),
+        }).then(function(resp) { return resp.json(); })
+        : Promise.resolve({ status: 'skipped' });
+
+    Promise.all([receiptSave, lineItemSave])
+    .then(function(results) {
+        var d = results[0];
         if (d.status === 'updated') {
             msg.innerHTML = '<span style="color:#16a34a;">Saved! Reloading...</span>';
             setTimeout(function() { openReceiptModal(receiptId); }, 500);
-            // Refresh ledger if it exists
             if (typeof loadLedger === 'function') loadLedger();
         } else {
             msg.innerHTML = '<span style="color:#dc2626;">' + (d.error || 'Failed') + '</span>';

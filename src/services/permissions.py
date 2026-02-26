@@ -107,8 +107,16 @@ def has_minimum_role(min_role: str) -> bool:
 
 
 def is_own_data_only() -> bool:
-    """True if the user should only see their own data (employee role)."""
-    return get_current_role() == "employee"
+    """True if the user should only see their own data (employee role).
+
+    Returns False for any non-employee role, and also False if the session
+    is missing system_role (stale session from before permissions migration).
+    """
+    user = session.get("user")
+    if not user:
+        return False
+    # Only restrict to own data when explicitly set to employee role
+    return user.get("system_role") == "employee"
 
 
 # ── Permission checking ──────────────────────────────────

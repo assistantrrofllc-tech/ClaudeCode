@@ -346,6 +346,71 @@ def test_employee_sees_only_own_crew_data():
     assert data[0]["id"] == 1
 
 
+def test_super_admin_no_employee_id_sees_all_receipts():
+    """super_admin with no employee_id still sees all receipts."""
+    setup_test_db()
+    client = make_client("super_admin", employee_id=None)
+    resp = client.get("/api/receipts")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data) >= 2
+
+
+def test_super_admin_no_employee_id_sees_all_crew():
+    """super_admin with no employee_id still sees all employees."""
+    setup_test_db()
+    client = make_client("super_admin", employee_id=None)
+    resp = client.get("/api/crew/employees")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data) >= 2
+
+
+def test_stale_session_no_system_role_sees_all_receipts():
+    """User with stale session (no system_role) sees all receipts, not empty."""
+    setup_test_db()
+    client = get_app().test_client()
+    with client.session_transaction() as sess:
+        sess["user"] = {
+            "email": "test@example.com",
+            "name": "Test User",
+            "picture": "",
+            "role": "admin",
+            # No system_role key — simulates stale session
+        }
+        # No employee_id either
+    resp = client.get("/api/receipts")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data) >= 2
+
+
+def test_super_admin_can_update_line_items():
+    """super_admin can update line items on a receipt."""
+    setup_test_db()
+    client = make_client("super_admin")
+    resp = client.put("/api/receipts/1/line-items", json={
+        "line_items": [
+            {"item_name": "Nails", "quantity": 2, "unit_price": 5.99, "extended_price": 11.98},
+            {"item_name": "Screws", "quantity": 1, "unit_price": 3.50, "extended_price": 3.50},
+        ]
+    })
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "updated"
+    assert data["item_count"] == 2
+
+
+def test_manager_cannot_update_line_items():
+    """manager gets 403 on line item update."""
+    setup_test_db()
+    client = make_client("manager")
+    resp = client.put("/api/receipts/1/line-items", json={
+        "line_items": [{"item_name": "Test", "quantity": 1, "unit_price": 1, "extended_price": 1}]
+    })
+    assert resp.status_code == 403
+
+
 def test_manager_sees_all_receipts():
     """manager sees all receipts (not filtered)."""
     setup_test_db()
