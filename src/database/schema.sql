@@ -399,3 +399,94 @@ CREATE TABLE IF NOT EXISTS authorized_users (
 
 INSERT OR IGNORE INTO authorized_users (email, name, role) VALUES
     ('official.techquest.ai@gmail.com', 'Robert Cordero', 'admin');
+
+-- ============================================================
+-- VEHICLES
+-- Fleet vehicles, vans, trucks, and trailers.
+-- Tracks assignment, status (active/sold), and basic specs.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS vehicles (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    year            INTEGER,
+    make            TEXT,
+    model           TEXT,
+    color           TEXT,
+    tire_size       TEXT,
+    plate_number    TEXT,
+    vin             TEXT    UNIQUE,
+    nickname        TEXT,
+    assigned_to     TEXT,
+    status          TEXT    DEFAULT 'active'
+                           CHECK(status IN ('active', 'sold', 'out_of_service')),
+    created_at      TEXT    DEFAULT (datetime('now')),
+    updated_at      TEXT    DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vehicles_status ON vehicles(status);
+CREATE INDEX IF NOT EXISTS idx_vehicles_vin    ON vehicles(vin);
+
+-- ============================================================
+-- VEHICLE MAINTENANCE
+-- Service history for fleet vehicles. Each record captures one
+-- repair/service visit with cost, mileage, and vendor.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS vehicle_maintenance (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id      INTEGER NOT NULL,
+    service_date    TEXT,
+    description     TEXT,
+    cost            REAL,
+    mileage         INTEGER,
+    vendor          TEXT,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_veh_maint_vehicle ON vehicle_maintenance(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_veh_maint_date    ON vehicle_maintenance(service_date);
+
+-- ============================================================
+-- VENDORS
+-- Material suppliers and vendor contacts.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS vendors (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT    UNIQUE NOT NULL,
+    address         TEXT,
+    phone           TEXT,
+    contact_name    TEXT,
+    items           TEXT,
+    has_account     INTEGER DEFAULT 0,
+    created_at      TEXT    DEFAULT (datetime('now'))
+);
+
+-- ============================================================
+-- PROJECT ASSIGNMENTS
+-- Maps projects to executive, PM, and assistants.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS project_assignments (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_name    TEXT    NOT NULL,
+    project_exec    TEXT,
+    pm              TEXT,
+    assistant_1     TEXT,
+    assistant_2     TEXT,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    UNIQUE(project_name)
+);
+
+-- ============================================================
+-- INVENTORY
+-- Shop inventory items across locations (Orlando, Tampa).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS inventory (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_name       TEXT    NOT NULL,
+    quantity        TEXT,
+    manufacturer    TEXT,
+    location        TEXT,
+    section         TEXT,
+    updated_at      TEXT    DEFAULT (datetime('now')),
+    created_at      TEXT    DEFAULT (datetime('now')),
+    UNIQUE(item_name, location, section)
+);
