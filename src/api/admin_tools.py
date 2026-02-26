@@ -17,6 +17,7 @@ from thefuzz import fuzz
 from config.settings import CERT_STORAGE_PATH
 from src.database.connection import get_db
 from src.services.auth import login_required
+from src.services.permissions import require_role
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ _upload_sessions = {}
 
 @admin_bp.route("/admin/cert-splitter")
 @login_required
+@require_role("super_admin", "company_admin")
 def cert_splitter_page():
     """Admin tool — PDF splitter for multi-page cert documents."""
     db = get_db()
@@ -49,6 +51,7 @@ def cert_splitter_page():
 
 @admin_bp.route("/admin/cert-splitter/upload", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def cert_splitter_upload():
     """Upload a multi-page PDF, split into pages, extract text from each."""
     import pdfplumber
@@ -109,6 +112,7 @@ def cert_splitter_upload():
 
 @admin_bp.route("/admin/cert-splitter/save", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def cert_splitter_save():
     """Save assigned pages to employee cert storage directories.
 
@@ -274,6 +278,7 @@ def _extract_name_from_text(text: str) -> str:
 
 @admin_bp.route("/admin/cert-import")
 @login_required
+@require_role("super_admin", "company_admin")
 def cert_import_page():
     """Admin tool — bulk CSV import for certifications."""
     db = get_db()
@@ -295,6 +300,7 @@ def cert_import_page():
 
 @admin_bp.route("/admin/cert-import/upload", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def cert_import_upload():
     """Parse CSV and fuzzy-match employee names, return preview data."""
     if "csv" not in request.files:
@@ -361,6 +367,7 @@ def cert_import_upload():
 
 @admin_bp.route("/admin/cert-import/save", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def cert_import_save():
     """Import selected certification rows.
 

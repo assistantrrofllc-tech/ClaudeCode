@@ -18,10 +18,18 @@
             <h2 id="emp-name">{{ employee.full_name or employee.first_name }}{% if employee.nickname %} ({{ employee.nickname }}){% endif %}</h2>
             <div class="emp-card__meta">
                 {% if employee.phone_number %}
+                {% if user_role == 'employee' %}
+                <span class="crew-row__phone">***-***-{{ employee.phone_number[-4:] }}</span>
+                {% else %}
                 <a href="tel:{{ employee.phone_number }}" class="crew-row__phone">{{ employee.phone_number }}</a>
                 {% endif %}
+                {% endif %}
                 {% if employee.email %}
+                {% if user_role == 'employee' %}
+                <span class="crew-row__email">{{ employee.email[0] }}***@{{ employee.email.split('@')[1] if '@' in employee.email else '' }}</span>
+                {% else %}
                 <span class="crew-row__email">{{ employee.email }}</span>
+                {% endif %}
                 {% endif %}
             </div>
             <div class="emp-card__meta">
@@ -33,10 +41,13 @@
             <span class="badge {{ 'badge--confirmed' if employee.is_active else 'badge--rejected' }}">
                 {{ 'Active' if employee.is_active else 'Inactive' }}
             </span>
+            {% if can_edit %}
             <button class="btn btn--secondary btn--small" onclick="toggleEditEmployee()">Edit</button>
+            {% endif %}
         </div>
     </div>
 
+    {% if can_edit %}
     <!-- Inline Edit Form (hidden by default) -->
     <div id="emp-edit-form" class="edit-form" style="display:none;">
         <h4>Edit Employee</h4>
@@ -88,6 +99,7 @@
             <button class="btn btn--secondary btn--small" onclick="toggleEditEmployee()">Cancel</button>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <!-- Cert Badge Row -->
@@ -97,6 +109,7 @@
         <!-- Filled by JS -->
     </div>
 
+    {% if can_edit %}
     <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
         <button class="btn btn--primary btn--small" onclick="showAddCertForm()">+ Add Certification</button>
     </div>
@@ -139,6 +152,7 @@
             <button class="btn btn--secondary btn--small" onclick="hideAddCertForm()">Cancel</button>
         </div>
     </div>
+    {% endif %}
 
     <!-- Certs Table -->
     <div id="certs-loading" class="loading">Loading certifications...</div>
@@ -172,7 +186,9 @@
         <div style="display:flex; flex-direction:column; gap:8px;">
             <a href="/api/crew/employees/{{ employee.id }}/qr" download="qr_{{ employee.full_name or employee.first_name | replace(' ', '_') }}.png" class="btn btn--primary btn--small">Download PNG</a>
             <button class="btn btn--secondary btn--small" onclick="printQR()">Print</button>
+            {% if can_edit %}
             <button class="btn btn--secondary btn--small" style="color:var(--danger);" onclick="regenerateToken()">Regenerate</button>
+            {% endif %}
         </div>
     </div>
     {% else %}
@@ -236,6 +252,13 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
 {% endblock %}
 
 {% block scripts %}
@@ -321,12 +344,8 @@ function renderCertsTable() {
             <td><span class="badge ${statusClass}">${statusLabel}</span></td>
             <td>${docIcon}</td>
             <td class="cell-actions">
-                <button class="row-action-btn row-action-btn--edit" title="Edit" onclick="editCert(${c.id})">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                </button>
-                <button class="row-action-btn row-action-btn--delete" title="Delete" onclick="deleteCert(${c.id}, '${escHtml(c.cert_type_name)}')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
+                ${CAN_EDIT ? '<button class="row-action-btn row-action-btn--edit" title="Edit" onclick="editCert(' + c.id + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' : ''}
+                ${CAN_EDIT ? '<button class="row-action-btn row-action-btn--delete" title="Delete" onclick="deleteCert(' + c.id + ', \\'' + escHtml(c.cert_type_name) + '\\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' : ''}
             </td>
         </tr>`;
     });

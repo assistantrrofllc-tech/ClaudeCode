@@ -4,11 +4,14 @@
 {% block content %}
 <div class="page-header">
     <h1>Crew</h1>
+    {% if can_manage_employees %}
     <div class="header-actions">
         <button class="btn btn--primary" onclick="showAddEmployeeForm()">+ Add Employee</button>
     </div>
+    {% endif %}
 </div>
 
+{% if can_manage_employees %}
 <!-- Add Employee Form (hidden by default) -->
 <div id="add-employee-form" class="card" style="display:none; margin-bottom: 20px;">
     <h3>Add Employee</h3>
@@ -48,6 +51,7 @@
         <button class="btn btn--secondary" onclick="hideAddEmployeeForm()">Cancel</button>
     </div>
 </div>
+{% endif %}
 
 <!-- Search & Filter -->
 <div class="crew-filters">
@@ -68,6 +72,13 @@
     <p style="color:var(--text-muted); font-size:16px;">No employees found. Add your first crew member above.</p>
 </div>
 <div id="crew-groups" style="display:none;"></div>
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
 {% endblock %}
 
 {% block scripts %}

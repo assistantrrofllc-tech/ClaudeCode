@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}CrewOS — Home{% endblock %}
 
+{% block pre_scripts %}
+<script>var USER_ROLE = {{ user_role | tojson }};</script>
+{% endblock %}
+
 {% block content %}
 <!-- User Welcome -->
 <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">

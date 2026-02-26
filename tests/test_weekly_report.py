@@ -98,7 +98,9 @@ def get_test_client():
             "name": "Test User",
             "picture": "",
             "role": "admin",
+            "system_role": "super_admin",
         }
+        sess["employee_id"] = 1
     return client
 
 

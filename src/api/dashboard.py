@@ -24,7 +24,11 @@ from config.settings import RECEIPT_STORAGE_PATH, CERT_STORAGE_PATH
 from src.database.connection import get_db
 from src.services.auth import login_required
 from src.services.cert_status import calculate_cert_status, days_until_expiry
-from src.services.permissions import check_permission
+from src.services.permissions import (
+    check_permission, require_role, get_current_role,
+    get_current_employee_id, is_own_data_only, has_minimum_role,
+    mask_phone, mask_email,
+)
 
 log = logging.getLogger(__name__)
 
@@ -47,12 +51,28 @@ MODULE_NAVS = {
 
 def _render_module(template, active_module, active_subnav="", **kwargs):
     """Render a template with module navigation context."""
+    role = get_current_role()
+    role_level = {"super_admin": 4, "company_admin": 3, "manager": 2, "employee": 1}.get(role, 1)
+
+    # Filter sub-nav: hide Settings for non-super_admin
+    nav_items = MODULE_NAVS.get(active_module, [])
+    if role != "super_admin":
+        nav_items = [n for n in nav_items if n["id"] != "settings"]
+
+    # Inject role-based template vars (can be overridden by kwargs)
+    defaults = {
+        "can_edit": role_level >= 3,
+        "can_export": role_level >= 3,
+        "user_role": role,
+    }
+    defaults.update(kwargs)
+
     return render_template(
         template,
         active_module=active_module,
         active_subnav=active_subnav,
-        module_nav=MODULE_NAVS.get(active_module, []),
-        **kwargs,
+        module_nav=nav_items,
+        **defaults,
     )
 
 
@@ -70,25 +90,39 @@ def home():
         week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
         month_start = now.strftime("%Y-%m-01")
 
+        # Scope stats by employee_id for employee role
+        emp_filter = ""
+        emp_params_week = [week_start]
+        emp_params_month = [month_start]
+        if is_own_data_only():
+            own_id = get_current_employee_id()
+            if own_id:
+                emp_filter = " AND employee_id = ?"
+                emp_params_week.append(own_id)
+                emp_params_month.append(own_id)
+
         row = db.execute(
-            """SELECT COUNT(*) as cnt FROM receipts
-               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate')""",
-            (week_start,),
+            f"""SELECT COUNT(*) as cnt FROM receipts
+               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
+            emp_params_week,
         ).fetchone()
         receipts_this_week = row["cnt"] if row else 0
 
         row = db.execute(
-            """SELECT COALESCE(SUM(total), 0) as total FROM receipts
-               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate')""",
-            (month_start,),
+            f"""SELECT COALESCE(SUM(total), 0) as total FROM receipts
+               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
+            emp_params_month,
         ).fetchone()
         spend_this_month = row["total"] if row else 0
 
         # CrewCert stats
-        row = db.execute(
-            "SELECT COUNT(*) as cnt FROM employees WHERE is_active = 1"
-        ).fetchone()
-        employee_count = row["cnt"] if row else 0
+        if is_own_data_only():
+            employee_count = 1
+        else:
+            row = db.execute(
+                "SELECT COUNT(*) as cnt FROM employees WHERE is_active = 1"
+            ).fetchone()
+            employee_count = row["cnt"] if row else 0
 
         row = db.execute(
             """SELECT COUNT(*) as cnt FROM certifications c
@@ -225,7 +259,16 @@ def api_receipts():
     """
     db = get_db()
     try:
-        receipts = _query_receipts(db, request.args)
+        # Employee role: force filter to own receipts only
+        args = request.args
+        if is_own_data_only():
+            emp_id = get_current_employee_id()
+            if emp_id:
+                args = args.copy()
+                args["employee"] = str(emp_id)
+            else:
+                return jsonify([])
+        receipts = _query_receipts(db, args)
         return jsonify(receipts)
     finally:
         db.close()
@@ -233,6 +276,7 @@ def api_receipts():
 
 @dashboard_bp.route("/api/receipts", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_create_receipt():
     """Manually create a receipt (management entry). Saved as confirmed."""
     data = request.get_json(silent=True) or {}
@@ -291,6 +335,7 @@ def api_create_receipt():
 
 @dashboard_bp.route("/api/receipts/export")
 @login_required
+@require_role("super_admin", "company_admin")
 def api_receipts_export():
     """Export filtered receipts as QuickBooks CSV, Google Sheets CSV, or Excel.
 
@@ -374,6 +419,7 @@ def api_employees():
 
 @dashboard_bp.route("/api/employees", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_add_employee():
     """Add a new employee."""
     data = request.get_json()
@@ -416,6 +462,7 @@ def api_employee_detail(employee_id):
 
 @dashboard_bp.route("/api/employees/<int:employee_id>", methods=["PUT"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_update_employee(employee_id):
     """Update employee fields."""
     data = request.get_json()
@@ -446,6 +493,7 @@ def api_update_employee(employee_id):
 
 @dashboard_bp.route("/api/employees/<int:employee_id>/deactivate", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_deactivate_employee(employee_id):
     """Deactivate an employee — they can no longer submit receipts."""
     db = get_db()
@@ -459,6 +507,7 @@ def api_deactivate_employee(employee_id):
 
 @dashboard_bp.route("/api/employees/<int:employee_id>/activate", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_activate_employee(employee_id):
     """Reactivate an employee."""
     db = get_db()
@@ -498,6 +547,7 @@ def api_projects():
 
 @dashboard_bp.route("/api/projects", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_add_project():
     """Add a new project."""
     data = request.get_json()
@@ -533,6 +583,7 @@ def api_add_project():
 
 @dashboard_bp.route("/api/projects/<int:project_id>", methods=["PUT"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_update_project(project_id):
     """Update a project."""
     data = request.get_json()
@@ -558,6 +609,7 @@ def api_update_project(project_id):
 
 @dashboard_bp.route("/api/projects/<int:project_id>", methods=["DELETE"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_delete_project(project_id):
     """Delete a project. Receipts linked to it are kept but unlinked."""
     db = get_db()
@@ -623,6 +675,7 @@ def api_categories():
 
 @dashboard_bp.route("/api/categories", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_add_category():
     """Add a new category."""
     data = request.get_json(silent=True) or {}
@@ -648,6 +701,7 @@ def api_add_category():
 
 @dashboard_bp.route("/api/categories/<int:cat_id>", methods=["PUT"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_update_category(cat_id):
     """Rename or update a category."""
     data = request.get_json(silent=True) or {}
@@ -677,6 +731,7 @@ def api_update_category(cat_id):
 
 @dashboard_bp.route("/api/categories/<int:cat_id>/deactivate", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_deactivate_category(cat_id):
     """Deactivate a category — hidden from dropdowns, historical receipts keep it."""
     db = get_db()
@@ -693,6 +748,7 @@ def api_deactivate_category(cat_id):
 
 @dashboard_bp.route("/api/categories/<int:cat_id>/activate", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_activate_category(cat_id):
     """Reactivate a deactivated category."""
     db = get_db()
@@ -770,6 +826,12 @@ def crew_page():
 @login_required
 def crew_detail_page(employee_id):
     """CrewCert — individual employee profile and certifications."""
+    # Employee role can only view their own profile
+    if is_own_data_only():
+        own_id = get_current_employee_id()
+        if own_id and employee_id != own_id:
+            abort(403)
+
     db = get_db()
     try:
         emp = db.execute("SELECT * FROM employees WHERE id = ?", (employee_id,)).fetchone()
@@ -972,6 +1034,7 @@ def api_employee_qr(employee_id):
 
 @dashboard_bp.route("/api/crew/employees/<int:employee_id>/regenerate-token", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_regenerate_token(employee_id):
     """Regenerate public_token for an employee, invalidating old QR code."""
     db = get_db()
@@ -1112,6 +1175,7 @@ def api_crewcert_dashboard():
 
 @dashboard_bp.route("/api/crewcert/alerts/<int:alert_id>/acknowledge", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_acknowledge_alert(alert_id):
     """Acknowledge (dismiss) a cert alert."""
     db = get_db()
@@ -1131,6 +1195,7 @@ def api_acknowledge_alert(alert_id):
 
 @dashboard_bp.route("/api/crewcert/refresh", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_refresh_cert_status():
     """Manually trigger a cert status refresh."""
     from src.services.cert_refresh import run_cert_status_refresh
@@ -1169,15 +1234,32 @@ def api_crew_employees():
             "SELECT id, name, slug FROM certification_types WHERE is_active = 1 ORDER BY sort_order"
         ).fetchall()
 
-        employees = db.execute("""
-            SELECT id, employee_uuid, first_name, full_name, phone_number,
-                   email, role, crew, is_active, nickname, is_driver
-            FROM employees ORDER BY first_name
-        """).fetchall()
+        # Employee role: return only own record
+        if is_own_data_only():
+            own_id = get_current_employee_id()
+            if own_id:
+                employees = db.execute("""
+                    SELECT id, employee_uuid, first_name, full_name, phone_number,
+                           email, role, crew, is_active, nickname, is_driver
+                    FROM employees WHERE id = ?
+                """, (own_id,)).fetchall()
+            else:
+                employees = []
+        else:
+            employees = db.execute("""
+                SELECT id, employee_uuid, first_name, full_name, phone_number,
+                       email, role, crew, is_active, nickname, is_driver
+                FROM employees ORDER BY first_name
+            """).fetchall()
 
         result = []
         for emp in employees:
             emp_dict = dict(emp)
+
+            # Mask contact info for employee role
+            if is_own_data_only() and emp["id"] != get_current_employee_id():
+                emp_dict["phone_number"] = mask_phone(emp_dict.get("phone_number", ""))
+                emp_dict["email"] = mask_email(emp_dict.get("email", ""))
 
             # Get this employee's most recent cert per type
             certs = db.execute("""
@@ -1257,6 +1339,7 @@ def api_employee_certs(employee_id):
 
 @dashboard_bp.route("/api/crew/certifications", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_add_certification():
     """Add a new certification record."""
     data = request.get_json(silent=True) or {}
@@ -1290,6 +1373,7 @@ def api_add_certification():
 
 @dashboard_bp.route("/api/crew/certifications/<int:cert_id>", methods=["PUT"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_update_certification(cert_id):
     """Update a certification record."""
     data = request.get_json(silent=True) or {}
@@ -1315,6 +1399,7 @@ def api_update_certification(cert_id):
 
 @dashboard_bp.route("/api/crew/certifications/<int:cert_id>/delete", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_delete_certification(cert_id):
     """Soft-delete a certification record."""
     db = get_db()
@@ -1414,6 +1499,7 @@ def project_detail_page(project_id):
 
 @dashboard_bp.route("/settings")
 @login_required
+@require_role("super_admin")
 def settings_page():
     """Settings page — email config, links to employee/project management."""
     db = get_db()
@@ -1434,6 +1520,7 @@ def settings_page():
 
 @dashboard_bp.route("/api/settings", methods=["GET"])
 @login_required
+@require_role("super_admin")
 def api_get_settings():
     """Get all email settings."""
     db = get_db()
@@ -1446,6 +1533,7 @@ def api_get_settings():
 
 @dashboard_bp.route("/api/settings", methods=["PUT"])
 @login_required
+@require_role("super_admin")
 def api_update_settings():
     """Update email settings."""
     data = request.get_json()
@@ -1473,6 +1561,7 @@ def api_update_settings():
 
 @dashboard_bp.route("/api/settings/send-now", methods=["POST"])
 @login_required
+@require_role("super_admin")
 def api_send_report_now():
     """Trigger an immediate email report with current settings."""
     db = get_db()
@@ -1628,6 +1717,7 @@ def flagged_receipts():
 
 @dashboard_bp.route("/api/dashboard/flagged/<int:receipt_id>/approve", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def approve_receipt(receipt_id):
     """Approve a flagged receipt — sets status to confirmed."""
     db = get_db()
@@ -1647,6 +1737,7 @@ def approve_receipt(receipt_id):
 
 @dashboard_bp.route("/api/dashboard/flagged/<int:receipt_id>/dismiss", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def dismiss_receipt(receipt_id):
     """Dismiss a flagged receipt — sets status to rejected."""
     db = get_db()
@@ -1849,6 +1940,7 @@ def api_delete_receipt(receipt_id):
 
 @dashboard_bp.route("/api/receipts/<int:receipt_id>/restore", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_restore_receipt(receipt_id):
     """Restore a deleted or duplicate receipt back to confirmed."""
     db = get_db()
@@ -1872,6 +1964,7 @@ def api_restore_receipt(receipt_id):
 
 @dashboard_bp.route("/api/receipts/<int:receipt_id>/duplicate", methods=["POST"])
 @login_required
+@require_role("super_admin", "company_admin")
 def api_mark_duplicate(receipt_id):
     """Mark a receipt as duplicate of another."""
     data = request.get_json(silent=True) or {}

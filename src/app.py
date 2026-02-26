@@ -29,6 +29,7 @@ from src.api.export import export_bp
 from src.api.dashboard import dashboard_bp
 from src.api.admin_tools import admin_bp
 from src.api.auth import auth_bp, init_oauth
+from src.api.user_management import user_mgmt_bp
 
 log = logging.getLogger(__name__)
 
@@ -63,10 +64,29 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_globals():
+        user = session.get("user")
+        user_role = user.get("system_role", "employee") if user else "employee"
+        role_level = {"super_admin": 4, "company_admin": 3, "manager": 2, "employee": 1}.get(user_role, 1)
+
+        # Filter modules — employee only sees enabled modules with view access
+        visible_modules = CREWOS_MODULES
+        if user and user_role == "employee":
+            from src.services.permissions import DEFAULT_ACCESS
+            emp_access = DEFAULT_ACCESS.get("employee", {})
+            visible_modules = [
+                m for m in CREWOS_MODULES
+                if emp_access.get(m["id"], "none") != "none" or not m["enabled"]
+            ]
+
         return {
             "cache_version": app.config["CACHE_VERSION"],
-            "crewos_modules": CREWOS_MODULES,
-            "current_user": session.get("user"),
+            "crewos_modules": visible_modules,
+            "current_user": user,
+            "user_role": user_role,
+            "can_edit": role_level >= 3,  # company_admin+
+            "can_export": role_level >= 3,  # company_admin+
+            "can_manage_employees": role_level >= 3,  # company_admin+
+            "can_manage_settings": role_level >= 4,  # super_admin only
         }
 
     # Register blueprints
@@ -76,6 +96,7 @@ def create_app() -> Flask:
     app.register_blueprint(export_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(user_mgmt_bp)
 
     @app.route("/health")
     def health():

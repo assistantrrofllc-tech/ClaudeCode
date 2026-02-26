@@ -392,13 +392,16 @@ CREATE TABLE IF NOT EXISTS authorized_users (
     name            TEXT,
     role            TEXT    DEFAULT 'viewer'
                            CHECK(role IN ('admin', 'manager', 'viewer')),
+    system_role     TEXT    DEFAULT 'employee'
+                           CHECK(system_role IN ('super_admin', 'company_admin', 'manager', 'employee')),
+    employee_id     INTEGER REFERENCES employees(id),
     is_active       INTEGER DEFAULT 1,
     created_at      TEXT    DEFAULT (datetime('now')),
     last_login      TEXT
 );
 
-INSERT OR IGNORE INTO authorized_users (email, name, role) VALUES
-    ('official.techquest.ai@gmail.com', 'Robert Cordero', 'admin');
+INSERT OR IGNORE INTO authorized_users (email, name, role, system_role) VALUES
+    ('official.techquest.ai@gmail.com', 'Robert Cordero', 'admin', 'super_admin');
 
 -- ============================================================
 -- VEHICLES

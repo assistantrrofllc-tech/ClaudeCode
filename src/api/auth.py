@@ -86,16 +86,28 @@ def callback():
         )
         db.commit()
 
+        # Resolve system_role (new column, fallback for old schema)
+        system_role = (user["system_role"]
+                       if "system_role" in user.keys()
+                       else _legacy_role_map(user["role"]))
+
+        # Resolve employee_id (new column, fallback by email match)
+        employee_id = (user["employee_id"]
+                       if "employee_id" in user.keys() and user["employee_id"]
+                       else _find_employee_by_email(db, email))
+
         # Create session
         session["user"] = {
             "email": email,
             "name": name,
             "picture": picture,
             "role": user["role"],
+            "system_role": system_role,
         }
+        session["employee_id"] = employee_id
         session.permanent = True
 
-        log.info("User logged in: %s (%s)", email, user["role"])
+        log.info("User logged in: %s (system_role=%s)", email, system_role)
     finally:
         db.close()
 
@@ -110,3 +122,30 @@ def logout():
     session.clear()
     log.info("User logged out: %s", user.get("email", "unknown"))
     return redirect(url_for("auth.login"))
+
+
+# ── Helpers ───────────────────────────────────────────────
+
+
+def _legacy_role_map(legacy_role: str) -> str:
+    """Map old role column values to new system_role values.
+
+    Used when the authorized_users table hasn't been migrated yet.
+    """
+    mapping = {
+        "admin": "super_admin",
+        "manager": "manager",
+        "viewer": "employee",
+    }
+    return mapping.get(legacy_role, "employee")
+
+
+def _find_employee_by_email(db, email: str) -> int | None:
+    """Try to find an employee record matching this email address."""
+    if not email:
+        return None
+    row = db.execute(
+        "SELECT id FROM employees WHERE email = ? AND is_active = 1",
+        (email,),
+    ).fetchone()
+    return row["id"] if row else None

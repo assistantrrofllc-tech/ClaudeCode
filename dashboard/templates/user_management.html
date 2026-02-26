@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}CrewOS — User Management{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>User Management</h1>
+    <div class="header-actions">
+        <button class="btn btn--primary" onclick="showAddUserForm()">+ Add User</button>
+    </div>
+</div>
+
+<!-- Add User Form (hidden by default) -->
+<div id="add-user-form" class="card" style="display:none; margin-bottom: 20px;">
+    <h3>Add Authorized User</h3>
+    <div id="add-user-error" class="error-msg" style="display:none;"></div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Email *</label>
+            <input type="email" id="user-email" placeholder="user@example.com">
+        </div>
+        <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="user-name" placeholder="Full name">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>System Role *</label>
+            <select id="user-role">
+                <option value="employee">Employee</option>
+                <option value="manager">Manager</option>
+                <option value="company_admin">Company Admin</option>
+                <option value="super_admin">Super Admin</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Link to Employee</label>
+            <select id="user-employee">
+                <option value="">None</option>
+                {% for e in employees %}
+                <option value="{{ e.id }}">{{ e.full_name or e.first_name }} (ID: {{ e.id }})</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn btn--primary" onclick="submitAddUser()">Save</button>
+        <button class="btn btn--secondary" onclick="hideAddUserForm()">Cancel</button>
+    </div>
+</div>
+
+<!-- Users Table -->
+<div class="card">
+    <table class="data-table" id="users-table">
+        <thead>
+            <tr>
+                <th>Email</th>
+                <th>Name</th>
+                <th>System Role</th>
+                <th>Linked Employee</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr id="user-row-{{ u.id }}">
+                <td>{{ u.email }}</td>
+                <td>{{ u.name or '—' }}</td>
+                <td>
+                    <select class="role-select" data-user-id="{{ u.id }}" onchange="updateUserRole({{ u.id }}, this.value)">
+                        {% for r in valid_roles %}
+                        <option value="{{ r }}" {% if u.system_role == r %}selected{% endif %}>{{ r }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>{{ u.emp_full_name or u.emp_first_name or '—' }}</td>
+                <td>
+                    <span class="badge {{ 'badge--confirmed' if u.is_active else 'badge--rejected' }}"
+                          style="cursor:pointer;" onclick="toggleUserActive({{ u.id }}, {{ 0 if u.is_active else 1 }})">
+                        {{ 'Active' if u.is_active else 'Inactive' }}
+                    </span>
+                </td>
+                <td>{{ u.last_login or 'Never' }}</td>
+                <td class="cell-actions">
+                    <button class="row-action-btn row-action-btn--delete" title="Remove user" onclick="deleteUser({{ u.id }}, '{{ u.email }}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showAddUserForm() {
+    document.getElementById('add-user-form').style.display = 'block';
+    document.getElementById('user-email').focus();
+}
+
+function hideAddUserForm() {
+    document.getElementById('add-user-form').style.display = 'none';
+    document.getElementById('add-user-error').style.display = 'none';
+    ['user-email', 'user-name'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('user-role').value = 'employee';
+    document.getElementById('user-employee').value = '';
+}
+
+async function submitAddUser() {
+    const email = document.getElementById('user-email').value.trim();
+    const errEl = document.getElementById('add-user-error');
+
+    if (!email) {
+        errEl.textContent = 'Email is required.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    errEl.style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/admin/users', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                email: email,
+                name: document.getElementById('user-name').value.trim() || undefined,
+                system_role: document.getElementById('user-role').value,
+                employee_id: document.getElementById('user-employee').value || undefined,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Failed to add user.';
+            errEl.style.display = 'block';
+            return;
+        }
+        window.location.reload();
+    } catch (err) {
+        errEl.textContent = 'Network error.';
+        errEl.style.display = 'block';
+    }
+}
+
+async function updateUserRole(userId, newRole) {
+    try {
+        const resp = await fetch('/api/admin/users/' + userId, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({system_role: newRole}),
+        });
+        if (!resp.ok) {
+            const data = await resp.json();
+            alert(data.error || 'Failed to update role.');
+        }
+    } catch (err) {
+        alert('Network error.');
+    }
+}
+
+async function toggleUserActive(userId, newActive) {
+    try {
+        const resp = await fetch('/api/admin/users/' + userId, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({is_active: newActive}),
+        });
+        if (resp.ok) window.location.reload();
+        else alert('Failed to update status.');
+    } catch (err) {
+        alert('Network error.');
+    }
+}
+
+async function deleteUser(userId, email) {
+    if (!confirm('Remove ' + email + ' from authorized users? They will no longer be able to log in.')) return;
+    try {
+        const resp = await fetch('/api/admin/users/' + userId, {method: 'DELETE'});
+        if (resp.ok) window.location.reload();
+        else alert('Failed to remove user.');
+    } catch (err) {
+        alert('Network error.');
+    }
+}
+</script>
+{% endblock %}

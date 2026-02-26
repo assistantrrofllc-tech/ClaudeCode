@@ -6,6 +6,7 @@
     <h1>Ledger</h1>
     <div class="header-actions">
         <button class="btn btn--secondary" onclick="printLedger()">Print</button>
+        {% if can_export %}
         <div class="dropdown">
             <button class="btn btn--primary" onclick="toggleDropdown('export-menu')">Export</button>
             <div id="export-menu" class="dropdown-menu" style="display:none;">
@@ -14,7 +15,10 @@
                 <a href="#" onclick="exportData('excel'); return false;">Excel (.xlsx)</a>
             </div>
         </div>
+        {% endif %}
+        {% if can_edit %}
         <button class="btn btn--primary" onclick="openAddReceiptForm()">+ Add Receipt</button>
+        {% endif %}
     </div>
 </div>
 
@@ -127,7 +131,10 @@
 {% endblock %}
 
 {% block pre_scripts %}
-<script>var CAN_EDIT = {{ can_edit | tojson }};</script>
+<script>
+var CAN_EDIT = {{ can_edit | tojson }};
+var USER_ROLE = {{ user_role | tojson }};
+</script>
 {% endblock %}
 
 {% block scripts %}

@@ -34,6 +34,7 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "src" / "database" / "sch
 
 
 def setup_test_db():
+    os.environ["DATABASE_PATH"] = TEST_DB
     if Path(TEST_DB).exists():
         Path(TEST_DB).unlink()
     db = get_db(TEST_DB)
@@ -53,7 +54,7 @@ def get_unauthenticated_client():
     return get_app().test_client()
 
 
-def get_authenticated_client():
+def get_authenticated_client(system_role="super_admin"):
     client = get_app().test_client()
     with client.session_transaction() as sess:
         sess["user"] = {
@@ -61,7 +62,9 @@ def get_authenticated_client():
             "name": "Test User",
             "picture": "",
             "role": "admin",
+            "system_role": system_role,
         }
+        sess["employee_id"] = 1
     return client
 
 
