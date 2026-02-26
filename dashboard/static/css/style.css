@@ -874,8 +874,9 @@ button { cursor: pointer; font-family: inherit; }
     .ledger-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
-/* Compact mobile ledger: show Date, Employee, Vendor, Project, Amount only */
+/* Compact mobile ledger: show Date, Employee, Vendor, Amount only (4 columns) */
 @media (max-width: 768px) {
+    .ledger-table th:nth-child(4), .ledger-table td:nth-child(4),
     .ledger-table th:nth-child(5), .ledger-table td:nth-child(5),
     .ledger-table th:nth-child(7), .ledger-table td:nth-child(7),
     .ledger-table th:nth-child(8), .ledger-table td:nth-child(8),
@@ -886,6 +887,39 @@ button { cursor: pointer; font-family: inherit; }
 
     /* Bold amount */
     .ledger-table .cell-amount { font-weight: 700; }
+
+    /* Hide module tabs in header on mobile */
+    .module-bar__tabs { display: none; }
+
+    /* Filter collapse: hide sort-row by default, show via JS toggle */
+    .sort-row { display: none; }
+    .sort-row.sort-row--expanded { display: flex; }
+    .filter-toggle-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 14px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-pill);
+        background: var(--bg-card);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-muted);
+        cursor: pointer;
+        margin-left: 8px;
+    }
+    .filter-toggle-btn:hover { background: var(--bg-hover); }
+    .filter-toggle-btn .filter-count {
+        background: var(--accent);
+        color: #fff;
+        font-size: 10px;
+        padding: 1px 5px;
+        border-radius: 8px;
+        font-weight: 700;
+    }
+}
+@media (min-width: 769px) {
+    .filter-toggle-btn { display: none; }
 }
 
 /* ── Dropdown ─────────────────────────────────────────── */
@@ -1503,6 +1537,79 @@ button { cursor: pointer; font-family: inherit; }
 }
 @media (min-width: 768px) {
     .stats-row--4col { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ── Fullscreen Image Viewer ──────────────────────── */
+.fullscreen-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0,0,0,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+.fullscreen-viewer--active {
+    opacity: 1;
+    pointer-events: auto;
+}
+.fullscreen-viewer__close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    transition: background 0.15s;
+}
+.fullscreen-viewer__close:hover { background: rgba(255,255,255,0.3); }
+.fullscreen-viewer__img {
+    max-width: 95vw;
+    max-height: 95vh;
+    object-fit: contain;
+    touch-action: pinch-zoom;
+    border-radius: 4px;
+}
+
+/* Make receipt thumbnail clickable */
+.modal-image-wrap { cursor: pointer; }
+.modal-image-wrap img { cursor: zoom-in; }
+
+/* ── Inline Line Item Editing (detail card) ────────── */
+.li-inline-editor input {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 13px;
+    font-family: inherit;
+    width: 100%;
+    transition: border-color 0.15s, background 0.15s;
+}
+.li-inline-editor input:hover { border-color: var(--border); }
+.li-inline-editor input:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 2px rgba(37,99,235,0.1);
+}
+.li-inline-save {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+    align-items: center;
 }
 
 /* ── Textarea in forms ─────────────────────────────── */

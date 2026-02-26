@@ -82,6 +82,12 @@
         </div>
     </div>
 
+    <!-- Fullscreen Image Viewer -->
+    <div id="fullscreen-viewer" class="fullscreen-viewer" onclick="closeFullscreenViewer(event)">
+        <button class="fullscreen-viewer__close" onclick="closeFullscreenViewer(event)">&times;</button>
+        <img id="fullscreen-viewer-img" class="fullscreen-viewer__img" src="" alt="Receipt image full size">
+    </div>
+
     {% block pre_scripts %}{% endblock %}
     <script src="{{ url_for('static', filename='js/app.js') }}?v={{ cache_version }}"></script>
     {% block scripts %}{% endblock %}

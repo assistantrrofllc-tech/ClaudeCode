@@ -31,6 +31,7 @@
         <button class="filter-btn" data-period="month" onclick="setPeriod('month', this)">This Month</button>
         <button class="filter-btn" data-period="ytd" onclick="setPeriod('ytd', this)">YTD</button>
         <button class="filter-btn" data-period="custom" onclick="showCustomRange()">Custom</button>
+        <button class="filter-toggle-btn" id="filter-toggle-btn" onclick="toggleFilters()">Filters</button>
     </div>
     <div id="custom-range" class="custom-range" style="display:none;">
         <input type="date" id="date-start">

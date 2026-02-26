@@ -28,12 +28,14 @@ function openReceiptModal(receiptId) {
         .then(function(data) {
             _currentReceiptData = data;
 
-            // Set image
+            // Set image — click to open fullscreen viewer
             if (data.image_url) {
                 img.src = data.image_url;
                 img.style.display = 'block';
+                img.onclick = function() { openFullscreenViewer(data.image_url); };
             } else {
                 img.style.display = 'none';
+                img.onclick = null;
             }
 
             // Build details panel
@@ -63,20 +65,28 @@ function openReceiptModal(receiptId) {
             html += '<span id="notes-msg" style="margin-left:8px;font-size:12px;"></span>';
             html += '</div>';
 
-            // Line items
+            // Line items — inline editable
             if (data.line_items && data.line_items.length > 0) {
+                html += '<div class="li-inline-editor">';
                 html += '<table class="line-items-table">';
-                html += '<thead><tr><th>Item</th><th>Qty</th><th class="amount">Price</th></tr></thead>';
+                html += '<thead><tr><th>Item</th><th style="width:15%;">Qty</th><th class="amount" style="width:22%;">Price</th></tr></thead>';
                 html += '<tbody>';
                 for (var i = 0; i < data.line_items.length; i++) {
                     var item = data.line_items[i];
-                    html += '<tr>';
-                    html += '<td>' + escapeHtml(item.item_name || '?') + '</td>';
-                    html += '<td>' + (item.quantity || 1) + '</td>';
-                    html += '<td class="amount">' + formatMoney(item.extended_price) + '</td>';
+                    html += '<tr class="li-detail-row" data-idx="' + i + '">';
+                    html += '<td><input type="text" class="li-d-name" value="' + escapeAttr(item.item_name || '') + '"></td>';
+                    html += '<td><input type="number" class="li-d-qty" value="' + (item.quantity || 1) + '" step="any" min="0"></td>';
+                    html += '<td><input type="number" class="li-d-price" value="' + (item.extended_price || 0) + '" step="0.01"></td>';
                     html += '</tr>';
                 }
                 html += '</tbody></table>';
+                if (CAN_EDIT) {
+                    html += '<div class="li-inline-save">';
+                    html += '<button class="btn btn--small btn--primary" onclick="saveInlineLineItems(' + receiptId + ')">Save Items</button>';
+                    html += '<span id="li-save-msg" style="font-size:12px;"></span>';
+                    html += '</div>';
+                }
+                html += '</div>';
             }
 
             details.innerHTML = html;
@@ -608,4 +618,104 @@ function escapeHtml(str) {
 function escapeAttr(str) {
     if (!str) return '';
     return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+
+// ── Fullscreen Image Viewer ─────────────────────────
+
+function openFullscreenViewer(imageUrl) {
+    var viewer = document.getElementById('fullscreen-viewer');
+    var img = document.getElementById('fullscreen-viewer-img');
+    if (!viewer || !img) return;
+    img.src = imageUrl;
+    viewer.classList.add('fullscreen-viewer--active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeFullscreenViewer(e) {
+    var viewer = document.getElementById('fullscreen-viewer');
+    if (!viewer) return;
+    // Only close if clicking backdrop or close button, not the image itself
+    if (e && e.target && e.target.id === 'fullscreen-viewer-img') return;
+    viewer.classList.remove('fullscreen-viewer--active');
+    // Don't restore body overflow — receipt modal is still open
+}
+
+// Swipe down to close fullscreen viewer
+(function() {
+    var viewer = document.getElementById('fullscreen-viewer');
+    if (!viewer) return;
+    var startY;
+    viewer.addEventListener('touchstart', function(e) {
+        if (e.touches.length !== 1) return;
+        startY = e.touches[0].clientY;
+    }, { passive: true });
+    viewer.addEventListener('touchend', function(e) {
+        if (startY === undefined) return;
+        var dy = e.changedTouches[0].clientY - startY;
+        startY = undefined;
+        if (dy > 80) closeFullscreenViewer(e);
+    }, { passive: true });
+})();
+
+// Escape closes fullscreen viewer first, then modal
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        var viewer = document.getElementById('fullscreen-viewer');
+        if (viewer && viewer.classList.contains('fullscreen-viewer--active')) {
+            closeFullscreenViewer(e);
+            e.stopImmediatePropagation();
+        }
+    }
+}, true);
+
+
+// ── Filter Toggle (Mobile) ─────────────────────────
+
+function toggleFilters() {
+    var sortRow = document.querySelector('.sort-row');
+    if (!sortRow) return;
+    sortRow.classList.toggle('sort-row--expanded');
+    var btn = document.getElementById('filter-toggle-btn');
+    if (btn) {
+        btn.textContent = sortRow.classList.contains('sort-row--expanded') ? 'Hide Filters' : 'Filters';
+    }
+}
+
+
+// ── Inline Line Item Save (Detail Card) ────────────
+
+function saveInlineLineItems(receiptId) {
+    var msg = document.getElementById('li-save-msg');
+    if (msg) msg.innerHTML = '<span style="color:#6b7280;">Saving...</span>';
+
+    var rows = document.querySelectorAll('.li-detail-row');
+    var items = [];
+    for (var i = 0; i < rows.length; i++) {
+        var name = rows[i].querySelector('.li-d-name').value.trim();
+        if (!name) continue;
+        items.push({
+            item_name: name,
+            quantity: parseFloat(rows[i].querySelector('.li-d-qty').value) || 1,
+            unit_price: parseFloat(rows[i].querySelector('.li-d-price').value) || 0,
+            extended_price: parseFloat(rows[i].querySelector('.li-d-price').value) || 0,
+        });
+    }
+
+    fetch('/api/receipts/' + receiptId + '/line-items', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ line_items: items }),
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(d) {
+        if (msg) {
+            if (d.status === 'updated') {
+                msg.innerHTML = '<span style="color:#16a34a;">Saved</span>';
+                setTimeout(function() { msg.innerHTML = ''; }, 2000);
+            } else {
+                msg.innerHTML = '<span style="color:#dc2626;">' + (d.error || 'Failed') + '</span>';
+            }
+        }
+    });
 }

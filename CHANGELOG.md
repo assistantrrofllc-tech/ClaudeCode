@@ -2,6 +2,17 @@
 
 All notable changes to CrewOS / CrewLedger.
 
+## [2026-02-26] CrewLedger Mobile Cleanup v2 — Fullscreen Viewer, Filter Collapse, Inline Editing
+
+- **4-column mobile ledger:** Date, Employee, Vendor, Amount only at ≤768px. Project column now hidden on mobile too.
+- **Fullscreen image viewer:** Tap receipt thumbnail to open dark overlay. Pinch-to-zoom (native), swipe down or X to close.
+- **Filter collapse on mobile:** Sort/filter dropdowns hidden behind "Filters" toggle button. Time pills stay visible.
+- **Mobile header simplified:** Module tab names hidden at ≤768px. Only CrewOS brand + gear + avatar + sign out shown.
+- **Inline line item editing:** Line items on receipt detail card are now editable inline with Save button + audit trail.
+- **Module access seeding:** Added rob.rrofllc@gmail.com (super_admin) and robert.m.cordero@gmail.com (default employee) to authorized_users.
+- **OpenSpec change:** Full artifact workflow (proposal → design → specs → tasks) completed.
+- **Tests:** 235 passing, no regressions
+
 ## [2026-02-26] CrewLedger Mobile Cleanup + Module Access Control
 
 - **Mobile optimizations:** Compact ledger layout on small screens (hide status/actions columns, truncate vendor names)

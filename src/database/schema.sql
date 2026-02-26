@@ -402,6 +402,10 @@ CREATE TABLE IF NOT EXISTS authorized_users (
 
 INSERT OR IGNORE INTO authorized_users (email, name, role, system_role) VALUES
     ('official.techquest.ai@gmail.com', 'Robert Cordero', 'admin', 'super_admin');
+INSERT OR IGNORE INTO authorized_users (email, name, role, system_role) VALUES
+    ('rob.rrofllc@gmail.com', 'Rob Cordero', 'admin', 'super_admin');
+INSERT OR IGNORE INTO authorized_users (email, name, role, system_role) VALUES
+    ('robert.m.cordero@gmail.com', 'Robert Cordero', 'viewer', 'employee');
 
 -- ============================================================
 -- VEHICLES
