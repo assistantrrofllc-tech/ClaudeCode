@@ -37,16 +37,16 @@
 <!-- Stat Cards -->
 <div class="stats-row">
     <div class="stat-card">
-        <div class="stat-card__label">Total Spend</div>
-        <div class="stat-card__value">${{ "%.2f"|format(project.total_spend or 0) }}</div>
+        <div class="stat-label">Total Spend</div>
+        <div class="stat-value">${{ "%.2f"|format(project.total_spend or 0) }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-card__label">Receipts</div>
-        <div class="stat-card__value">{{ project.receipt_count or 0 }}</div>
+        <div class="stat-label">Receipts</div>
+        <div class="stat-value">{{ project.receipt_count or 0 }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-card__label">Avg Receipt</div>
-        <div class="stat-card__value">
+        <div class="stat-label">Avg Receipt</div>
+        <div class="stat-value">
             {% if project.receipt_count %}
             ${{ "%.2f"|format((project.total_spend or 0) / project.receipt_count) }}
             {% else %}

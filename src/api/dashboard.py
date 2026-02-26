@@ -218,6 +218,7 @@ def serve_cert_file(filename):
 
 
 @dashboard_bp.route("/certifications/document/<employee_uuid>/<filename>")
+@login_required
 def serve_cert_document(employee_uuid, filename):
     """Serve a cert document from local storage.
 
