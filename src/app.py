@@ -30,6 +30,7 @@ from src.api.dashboard import dashboard_bp
 from src.api.admin_tools import admin_bp
 from src.api.auth import auth_bp, init_oauth
 from src.api.user_management import user_mgmt_bp
+from src.api.fleet import fleet_bp
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ def create_app() -> Flask:
         {"id": "crewledger", "label": "CrewLedger", "href": "/ledger", "enabled": True},
         {"id": "crewcert", "label": "CrewCert", "href": "/crewcert", "enabled": True},
         {"id": "crewschedule", "label": "CrewSchedule", "href": "#", "enabled": False},
-        {"id": "crewasset", "label": "CrewAsset", "href": "#", "enabled": False},
+        {"id": "crewasset", "label": "CrewAsset", "href": "/fleet/", "enabled": True},
         {"id": "crewinventory", "label": "CrewInventory", "href": "#", "enabled": False},
     ]
 
@@ -97,6 +98,7 @@ def create_app() -> Flask:
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(user_mgmt_bp)
+    app.register_blueprint(fleet_bp)
 
     @app.route("/health")
     def health():

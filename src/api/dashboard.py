@@ -46,6 +46,11 @@ MODULE_NAVS = {
         {"id": "dashboard", "label": "Dashboard", "href": "/crewcert"},
         {"id": "employees", "label": "Employees", "href": "/crew"},
     ],
+    "crewasset": [
+        {"id": "vehicles", "label": "Vehicles", "href": "/fleet/"},
+        {"id": "inventory", "label": "Inventory", "href": "#"},
+        {"id": "equipment", "label": "Equipment", "href": "#"},
+    ],
 }
 
 

@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}CrewAsset — Fleet{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Fleet</h1>
+</div>
+
+<!-- Summary Stats -->
+<div class="stats-row stats-row--4col" id="fleet-stats">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-total">--</div>
+        <div class="stat-label">Total Vehicles</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-spend">--</div>
+        <div class="stat-label">Total Maintenance Spend</div>
+    </div>
+    <div class="stat-card" id="stat-service-card">
+        <div class="stat-value" id="stat-service">--</div>
+        <div class="stat-label">Needing Service (90+ days)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-avg">--</div>
+        <div class="stat-label">Avg Cost / Vehicle</div>
+    </div>
+</div>
+
+<!-- Search & Filters -->
+<div class="crew-filters">
+    <div class="search-bar">
+        <input type="text" id="fleet-search" placeholder="Search by name, plate, or VIN..." oninput="filterFleet()">
+    </div>
+    <div class="crew-filter-pills" style="align-items:center;">
+        <button class="filter-btn active" data-filter="all" onclick="setFleetFilter('all', this)">All</button>
+        <button class="filter-btn" data-filter="active" onclick="setFleetFilter('active', this)">Active</button>
+        <button class="filter-btn" data-filter="out_of_service" onclick="setFleetFilter('out_of_service', this)">Out of Service</button>
+        <button class="filter-btn" data-filter="sold" onclick="setFleetFilter('sold', this)">Sold</button>
+        <div style="margin-left:auto;">
+            <select id="fleet-sort" onchange="sortFleet()" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; font-family:inherit; background:#fff; cursor:pointer;">
+                <option value="name">Sort: Name</option>
+                <option value="last_service">Sort: Last Serviced</option>
+                <option value="total_spend">Sort: Total Spend</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Vehicle Grid -->
+<div id="fleet-loading" class="loading">Loading fleet data...</div>
+<div id="fleet-empty" class="card" style="display:none; text-align:center; padding:48px 20px;">
+    <p style="color:var(--text-muted); font-size:16px;">No vehicles found.</p>
+</div>
+<div id="fleet-grid" class="fleet-grid" style="display:none;"></div>
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let fleetData = [];
+let currentFleetFilter = 'all';
+
+document.addEventListener('DOMContentLoaded', loadFleetData);
+
+async function loadFleetData() {
+    try {
+        const resp = await fetch('/fleet/', {headers: {'Accept': 'application/json'}});
+        const data = await resp.json();
+        fleetData = data.vehicles || [];
+        renderSummary(data.summary || {});
+        renderVehicleGrid(fleetData);
+    } catch (err) {
+        document.getElementById('fleet-loading').textContent = 'Failed to load fleet data.';
+    }
+}
+
+function renderSummary(summary) {
+    document.getElementById('stat-total').textContent = summary.total_vehicles != null ? summary.total_vehicles : 0;
+    document.getElementById('stat-spend').textContent = formatCurrency(summary.total_spend || 0);
+    var needingService = summary.needing_service || 0;
+    document.getElementById('stat-service').textContent = needingService;
+    if (needingService > 0) {
+        var card = document.getElementById('stat-service-card');
+        card.classList.add('stat-card--alert', 'has-flags');
+    }
+    document.getElementById('stat-avg').textContent = formatCurrency(summary.avg_cost_per_vehicle || 0);
+}
+
+function renderVehicleGrid(vehicles) {
+    var loading = document.getElementById('fleet-loading');
+    var empty = document.getElementById('fleet-empty');
+    var grid = document.getElementById('fleet-grid');
+
+    loading.style.display = 'none';
+
+    if (vehicles.length === 0) {
+        empty.style.display = 'block';
+        grid.style.display = 'none';
+        return;
+    }
+
+    empty.style.display = 'none';
+    grid.style.display = 'grid';
+
+    var html = '';
+    vehicles.forEach(function(v) {
+        var displayName = v.nickname || [v.year, v.make, v.model].filter(Boolean).join(' ');
+        var subtitle = v.nickname ? [v.year, v.make, v.model].filter(Boolean).join(' ') : '';
+        var statusClass = v.status === 'active' ? 'badge--confirmed' : v.status === 'sold' ? 'badge--rejected' : 'badge--pending';
+        var statusLabel = (v.status || 'active').replace(/_/g, ' ');
+        statusLabel = statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1);
+
+        var serviceDot = getServiceDotClass(v.days_since_service);
+        var serviceLabel = getServiceLabel(v.days_since_service, v.last_service_date);
+
+        html += '<div class="fleet-card" onclick="window.location=\'/fleet/' + v.id + '\'"'
+            + ' data-name="' + escHtml((displayName + ' ' + (v.plate_number || '') + ' ' + (v.vin || '')).toLowerCase()) + '"'
+            + ' data-status="' + escHtml(v.status || 'active') + '">';
+        html += '<div class="fleet-card__header">';
+        html += '<div class="fleet-card__icon">';
+        html += '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2"/><path d="M7 17l1-6h8l1 6"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/></svg>';
+        html += '</div>';
+        html += '<div class="fleet-card__info">';
+        html += '<div class="fleet-card__name">' + escHtml(displayName) + '</div>';
+        if (subtitle) {
+            html += '<div class="fleet-card__subtitle">' + escHtml(subtitle) + '</div>';
+        }
+        html += '</div>';
+        html += '<span class="badge ' + statusClass + '">' + escHtml(statusLabel) + '</span>';
+        html += '</div>';
+
+        html += '<div class="fleet-card__meta">';
+        if (v.plate_number) {
+            html += '<span class="fleet-card__plate">' + escHtml(v.plate_number) + '</span>';
+        }
+        if (v.assigned_to) {
+            html += '<span class="fleet-card__assigned">' + escHtml(v.assigned_to) + '</span>';
+        }
+        html += '</div>';
+
+        html += '<div class="fleet-card__stats">';
+        html += '<div class="fleet-card__service">';
+        html += '<span class="service-dot ' + serviceDot + '"></span> ';
+        html += '<span>' + escHtml(serviceLabel) + '</span>';
+        html += '</div>';
+        html += '<div class="fleet-card__spend">' + formatCurrency(v.total_spend || 0) + ' total</div>';
+        html += '</div>';
+
+        html += '</div>';
+    });
+
+    grid.innerHTML = html;
+}
+
+function getServiceDotClass(days) {
+    if (days == null) return 'service-dot--overdue';
+    if (days <= 90) return 'service-dot--good';
+    if (days <= 180) return 'service-dot--due';
+    return 'service-dot--overdue';
+}
+
+function getServiceLabel(days, lastDate) {
+    if (days == null || !lastDate) return 'Never serviced';
+    if (days === 0) return 'Serviced today';
+    if (days === 1) return 'Serviced yesterday';
+    return 'Serviced ' + days + ' days ago';
+}
+
+function filterFleet() {
+    var query = document.getElementById('fleet-search').value.toLowerCase();
+    var cards = document.querySelectorAll('.fleet-card');
+    var anyVisible = false;
+
+    cards.forEach(function(card) {
+        var name = card.dataset.name;
+        var status = card.dataset.status;
+        var matchesSearch = !query || name.indexOf(query) !== -1;
+        var matchesFilter = currentFleetFilter === 'all' || status === currentFleetFilter;
+        var visible = matchesSearch && matchesFilter;
+        card.style.display = visible ? '' : 'none';
+        if (visible) anyVisible = true;
+    });
+
+    var empty = document.getElementById('fleet-empty');
+    var grid = document.getElementById('fleet-grid');
+    if (!anyVisible && fleetData.length > 0) {
+        empty.style.display = 'block';
+        empty.querySelector('p').textContent = 'No vehicles match your filters.';
+    } else if (fleetData.length > 0) {
+        empty.style.display = 'none';
+    }
+}
+
+function setFleetFilter(filter, btn) {
+    currentFleetFilter = filter;
+    document.querySelectorAll('.crew-filter-pills .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    filterFleet();
+}
+
+function sortFleet() {
+    var sortBy = document.getElementById('fleet-sort').value;
+    var sorted = fleetData.slice();
+
+    if (sortBy === 'name') {
+        sorted.sort(function(a, b) {
+            var nameA = (a.nickname || [a.year, a.make, a.model].filter(Boolean).join(' ')).toLowerCase();
+            var nameB = (b.nickname || [b.year, b.make, b.model].filter(Boolean).join(' ')).toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+    } else if (sortBy === 'last_service') {
+        sorted.sort(function(a, b) {
+            var da = a.last_service_date || '';
+            var db = b.last_service_date || '';
+            return db.localeCompare(da);
+        });
+    } else if (sortBy === 'total_spend') {
+        sorted.sort(function(a, b) { return (b.total_spend || 0) - (a.total_spend || 0); });
+    }
+
+    fleetData = sorted;
+    renderVehicleGrid(sorted);
+    filterFleet();
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function formatCurrency(amount) {
+    if (amount == null) return '$0.00';
+    return '$' + Number(amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '--';
+    var d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
+}
+</script>
+{% endblock %}

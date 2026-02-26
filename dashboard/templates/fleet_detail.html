@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block title %}CrewAsset — {{ vehicle.nickname or [vehicle.year, vehicle.make, vehicle.model]|join(' ') }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex; align-items:center; gap:8px;">
+        <a href="/fleet/" style="color:var(--text-muted); font-size:14px; text-decoration:none;">&larr; Fleet</a>
+    </div>
+</div>
+
+<!-- Vehicle Info Card -->
+<div class="card emp-card">
+    <div class="emp-card__header">
+        <div class="emp-card__avatar" style="background:var(--crewasset-light);">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--crewasset-dark)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2"/><path d="M7 17l1-6h8l1 6"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/></svg>
+        </div>
+        <div class="emp-card__info">
+            <h2>
+                {% if vehicle.nickname %}
+                    {{ vehicle.nickname }}
+                    <span style="font-size:14px; font-weight:400; color:var(--text-muted);">{{ vehicle.year }} {{ vehicle.make }} {{ vehicle.model }}</span>
+                {% else %}
+                    {{ vehicle.year }} {{ vehicle.make }} {{ vehicle.model }}
+                {% endif %}
+            </h2>
+            <div class="emp-card__meta">
+                {% if vehicle.vin %}<span title="VIN">VIN: {{ vehicle.vin }}</span>{% endif %}
+                {% if vehicle.plate_number %}<span>Plate: {{ vehicle.plate_number }}</span>{% endif %}
+                {% if vehicle.color %}<span>{{ vehicle.color }}</span>{% endif %}
+                {% if vehicle.tire_size %}<span>Tires: {{ vehicle.tire_size }}</span>{% endif %}
+            </div>
+            <div class="emp-card__meta">
+                {% if vehicle.assigned_to %}<span>Assigned to: {{ vehicle.assigned_to }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="emp-card__actions">
+            {% set status_label = (vehicle.status or 'active')|replace('_', ' ')|capitalize %}
+            {% if vehicle.status == 'active' %}
+            <span class="badge badge--confirmed">{{ status_label }}</span>
+            {% elif vehicle.status == 'sold' %}
+            <span class="badge badge--rejected">{{ status_label }}</span>
+            {% else %}
+            <span class="badge badge--pending">{{ status_label }}</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Maintenance Stats -->
+<div class="card" style="margin-top:16px;">
+    <h3>Maintenance Summary</h3>
+    <div class="stats-row stats-row--4col" style="margin-bottom:0;">
+        <div class="stat-card">
+            <div class="stat-value">${{ '%.2f' % (stats.total_spend or 0) }}</div>
+            <div class="stat-label">Total Spend</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.record_count or 0 }}</div>
+            <div class="stat-label">Service Records</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${{ '%.2f' % (stats.avg_cost or 0) }}</div>
+            <div class="stat-label">Avg Cost / Service</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="font-size:16px;">{{ stats.top_vendor or '--' }}</div>
+            <div class="stat-label">Top Vendor</div>
+        </div>
+    </div>
+    {% if stats.mileage_first and stats.mileage_latest %}
+    <div style="text-align:center; margin-top:12px; font-size:13px; color:var(--text-muted);">
+        Mileage range: {{ '{:,}'.format(stats.mileage_first) }} &rarr; {{ '{:,}'.format(stats.mileage_latest) }} mi
+    </div>
+    {% endif %}
+</div>
+
+<!-- Add Maintenance Button -->
+{% set CAN_ADD = user_role in ['super_admin', 'company_admin', 'manager'] %}
+{% if CAN_ADD %}
+<div style="margin-top:16px; display:flex; justify-content:flex-end;">
+    <button class="btn btn--primary" onclick="showAddMaintenance()">+ Add Maintenance Record</button>
+</div>
+
+<!-- Add Maintenance Form (hidden) -->
+<div id="add-maint-form" class="card edit-form" style="display:none; margin-top:12px;">
+    <h4>Add Maintenance Record</h4>
+    <div id="add-maint-error" class="error-msg" style="display:none;"></div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Date *</label>
+            <input type="date" id="maint-date">
+        </div>
+        <div class="form-group">
+            <label>Cost *</label>
+            <input type="number" id="maint-cost" step="0.01" min="0" placeholder="0.00">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Description *</label>
+            <input type="text" id="maint-desc" placeholder="Oil change, brake pads, etc.">
+        </div>
+        <div class="form-group">
+            <label>Vendor</label>
+            <input type="text" id="maint-vendor" placeholder="Firestone, Take 5, etc.">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Mileage</label>
+            <input type="number" id="maint-mileage" min="0" placeholder="Current mileage">
+        </div>
+        <div class="form-group"></div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+        <button class="btn btn--primary btn--small" onclick="submitMaintenance()">Save</button>
+        <button class="btn btn--secondary btn--small" onclick="hideAddMaintenance()">Cancel</button>
+    </div>
+</div>
+{% endif %}
+
+<!-- Maintenance Log -->
+<div class="card" style="margin-top:16px;">
+    <h3>Maintenance Log</h3>
+    <div class="crew-filter-pills" style="margin-bottom:12px;">
+        <button class="filter-btn active" data-timefilter="all" onclick="setTimeFilter('all', this)">All</button>
+        <button class="filter-btn" data-timefilter="this_year" onclick="setTimeFilter('this_year', this)">This Year</button>
+        <button class="filter-btn" data-timefilter="6months" onclick="setTimeFilter('6months', this)">Last 6 Months</button>
+        <button class="filter-btn" data-timefilter="last_year" onclick="setTimeFilter('last_year', this)">Last Year</button>
+    </div>
+
+    <div id="maint-empty" style="display:none; text-align:center; padding:24px; color:var(--text-muted);">
+        No maintenance records found.
+    </div>
+    <div style="overflow-x:auto;">
+        <table id="maint-table" class="data-table" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Cost</th>
+                    <th>Mileage</th>
+                    <th>Vendor</th>
+                </tr>
+            </thead>
+            <tbody id="maint-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Vendor Summary -->
+<div class="card" style="margin-top:16px;">
+    <h3>Vendor Summary</h3>
+    <div id="vendor-empty" style="display:none; text-align:center; padding:24px; color:var(--text-muted);">
+        No vendor data available.
+    </div>
+    <div style="overflow-x:auto;">
+        <table id="vendor-table" class="data-table" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Vendor</th>
+                    <th>Visits</th>
+                    <th style="text-align:right;">Total Spend</th>
+                </tr>
+            </thead>
+            <tbody id="vendor-tbody"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+var CAN_ADD_MAINTENANCE = {{ (user_role in ['super_admin', 'company_admin', 'manager']) | tojson }};
+var VEHICLE_ID = {{ vehicle.id }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var maintenanceData = {{ maintenance | tojson }};
+var vendorSummaryData = {{ vendor_summary | tojson }};
+var currentTimeFilter = 'all';
+
+document.addEventListener('DOMContentLoaded', function() {
+    renderMaintenanceTable(maintenanceData);
+    renderVendorTable(vendorSummaryData);
+});
+
+function renderMaintenanceTable(records) {
+    var empty = document.getElementById('maint-empty');
+    var table = document.getElementById('maint-table');
+    var tbody = document.getElementById('maint-tbody');
+
+    var filtered = filterByTime(records);
+
+    if (filtered.length === 0) {
+        empty.style.display = 'block';
+        table.style.display = 'none';
+        return;
+    }
+
+    empty.style.display = 'none';
+    table.style.display = 'table';
+
+    // Sort by date DESC
+    filtered.sort(function(a, b) {
+        return (b.service_date || '').localeCompare(a.service_date || '');
+    });
+
+    var html = '';
+    filtered.forEach(function(r) {
+        html += '<tr>';
+        html += '<td style="white-space:nowrap;">' + formatDate(r.service_date) + '</td>';
+        html += '<td>' + escHtml(r.description || '--') + '</td>';
+        html += '<td class="cell-amount">' + formatCurrency(r.cost) + '</td>';
+        html += '<td>' + (r.mileage ? Number(r.mileage).toLocaleString() : '--') + '</td>';
+        html += '<td>' + escHtml(r.vendor || '--') + '</td>';
+        html += '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function filterByTime(records) {
+    if (currentTimeFilter === 'all') return records;
+
+    var now = new Date();
+    var cutoff;
+
+    if (currentTimeFilter === 'this_year') {
+        cutoff = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
+    } else if (currentTimeFilter === '6months') {
+        var d = new Date(now);
+        d.setMonth(d.getMonth() - 6);
+        cutoff = d.toISOString().slice(0, 10);
+    } else if (currentTimeFilter === 'last_year') {
+        cutoff = new Date(now.getFullYear() - 1, 0, 1).toISOString().slice(0, 10);
+        var end = new Date(now.getFullYear() - 1, 11, 31).toISOString().slice(0, 10);
+        return records.filter(function(r) {
+            return r.service_date >= cutoff && r.service_date <= end;
+        });
+    }
+
+    return records.filter(function(r) {
+        return r.service_date >= cutoff;
+    });
+}
+
+function setTimeFilter(filter, btn) {
+    currentTimeFilter = filter;
+    document.querySelectorAll('[data-timefilter]').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    renderMaintenanceTable(maintenanceData);
+}
+
+function renderVendorTable(vendors) {
+    var empty = document.getElementById('vendor-empty');
+    var table = document.getElementById('vendor-table');
+    var tbody = document.getElementById('vendor-tbody');
+
+    if (!vendors || vendors.length === 0) {
+        empty.style.display = 'block';
+        table.style.display = 'none';
+        return;
+    }
+
+    empty.style.display = 'none';
+    table.style.display = 'table';
+
+    var html = '';
+    vendors.forEach(function(v) {
+        html += '<tr>';
+        html += '<td><strong>' + escHtml(v.vendor || 'Unknown') + '</strong></td>';
+        html += '<td>' + (v.visits || 0) + '</td>';
+        html += '<td class="cell-amount">' + formatCurrency(v.total_spend) + '</td>';
+        html += '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+// ── Add Maintenance ──
+function showAddMaintenance() {
+    document.getElementById('add-maint-form').style.display = 'block';
+    document.getElementById('maint-date').focus();
+}
+
+function hideAddMaintenance() {
+    document.getElementById('add-maint-form').style.display = 'none';
+    document.getElementById('add-maint-error').style.display = 'none';
+    ['maint-date', 'maint-cost', 'maint-desc', 'maint-vendor', 'maint-mileage'].forEach(function(id) {
+        document.getElementById(id).value = '';
+    });
+}
+
+async function submitMaintenance() {
+    var errEl = document.getElementById('add-maint-error');
+    var dateVal = document.getElementById('maint-date').value;
+    var costVal = document.getElementById('maint-cost').value;
+    var descVal = document.getElementById('maint-desc').value.trim();
+
+    if (!dateVal || !costVal || !descVal) {
+        errEl.textContent = 'Date, cost, and description are required.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    errEl.style.display = 'none';
+
+    try {
+        var resp = await fetch('/fleet/' + VEHICLE_ID + '/maintenance', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                service_date: dateVal,
+                cost: parseFloat(costVal),
+                description: descVal,
+                vendor: document.getElementById('maint-vendor').value.trim() || null,
+                mileage: document.getElementById('maint-mileage').value ? parseInt(document.getElementById('maint-mileage').value) : null,
+            }),
+        });
+        var data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Failed to add record.';
+            errEl.style.display = 'block';
+            return;
+        }
+        window.location.reload();
+    } catch (err) {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.style.display = 'block';
+    }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function formatCurrency(amount) {
+    if (amount == null) return '$0.00';
+    return '$' + Number(amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '--';
+    var d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
+}
+</script>
+{% endblock %}

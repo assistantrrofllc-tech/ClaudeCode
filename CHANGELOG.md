@@ -2,6 +2,28 @@
 
 All notable changes to CrewOS / CrewLedger.
 
+## [2026-02-26] CrewAsset — Vehicles Module
+
+### Added
+- **Fleet overview page** with summary stats (total vehicles, total spend, avg cost), vehicle cards, search/filter
+- **Vehicle detail page** with maintenance history, vendor summary, mileage tracking
+- **Maintenance CRUD** — add/edit/delete maintenance records with role-based permissions
+- 6 new API routes under `/fleet/` (overview, detail, maintenance list, add, edit, delete)
+- **CrewAsset module tab** enabled in navigation with orange/amber color theme
+- Sub-navigation for CrewAsset modules (Vehicles active, Inventory/Equipment placeholders)
+- 12 new tests for fleet routes and permissions (`tests/test_fleet.py`)
+
+### New Files
+- `src/api/fleet.py` — Fleet blueprint with 6 routes
+- `dashboard/templates/fleet.html` — Fleet overview template
+- `dashboard/templates/fleet_detail.html` — Vehicle detail template
+- `tests/test_fleet.py` — Fleet integration tests
+
+### Permissions
+- Add/edit maintenance: `require_permission("crewasset", "edit")` — company_admin+ only
+- Delete maintenance: `require_role("super_admin", "company_admin")` — admin-tier only
+- View routes: any authenticated user
+
 ## [2026-02-26] — Role-Based Permissions + Legal Pages
 
 ### Added
