@@ -1545,16 +1545,12 @@ button { cursor: pointer; font-family: inherit; }
     inset: 0;
     z-index: 2000;
     background: rgba(0,0,0,0.92);
-    display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    pointer-events: none;
+    display: none;
 }
 .fullscreen-viewer--active {
-    opacity: 1;
-    pointer-events: auto;
+    display: flex;
 }
 .fullscreen-viewer__close {
     position: absolute;
@@ -1587,29 +1583,14 @@ button { cursor: pointer; font-family: inherit; }
 .modal-image-wrap { cursor: pointer; }
 .modal-image-wrap img { cursor: zoom-in; }
 
-/* ── Inline Line Item Editing (detail card) ────────── */
-.li-inline-editor input {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    padding: 2px 4px;
-    font-size: 13px;
-    font-family: inherit;
-    width: 100%;
-    transition: border-color 0.15s, background 0.15s;
+/* ── Read-only line items and detail fields ────────── */
+.li-inline-editor td {
+    cursor: default;
+    user-select: text;
 }
-.li-inline-editor input:hover { border-color: var(--border); }
-.li-inline-editor input:focus {
-    outline: none;
-    border-color: var(--accent);
-    background: var(--bg-card);
-    box-shadow: 0 0 0 2px rgba(37,99,235,0.1);
-}
-.li-inline-save {
-    display: flex;
-    gap: 8px;
-    margin-top: 6px;
-    align-items: center;
+.detail-value {
+    cursor: default;
+    user-select: text;
 }
 
 /* ── Textarea in forms ─────────────────────────────── */

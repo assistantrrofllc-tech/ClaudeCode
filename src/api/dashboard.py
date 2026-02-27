@@ -852,16 +852,18 @@ def invoices_page():
     """Invoices list view — documents classified as invoices via SMS intake."""
     db = get_db()
     try:
-        rows = db.execute("""
-            SELECT i.*, e.first_name as employee_name, p.name as project_name
-            FROM invoices i
-            LEFT JOIN employees e ON i.employee_id = e.id
-            LEFT JOIN projects p ON i.project_id = p.id
-            ORDER BY i.created_at DESC
-        """).fetchall()
-        invoices = [dict(r) for r in rows]
-        can_edit = check_permission(None, "crewledger", "edit")
-        return _render_module("invoices.html", "crewledger", "invoices", invoices=invoices, can_edit=can_edit)
+        try:
+            rows = db.execute("""
+                SELECT i.*, e.first_name as employee_name, p.name as project_name
+                FROM invoices i
+                LEFT JOIN employees e ON i.employee_id = e.id
+                LEFT JOIN projects p ON i.project_id = p.id
+                ORDER BY i.created_at DESC
+            """).fetchall()
+            invoices = [dict(r) for r in rows]
+        except Exception:
+            invoices = []
+        return _render_module("invoices.html", "crewledger", "invoices", invoices=invoices)
     finally:
         db.close()
 
@@ -873,16 +875,18 @@ def packing_slips_page():
     """Packing slips list view — documents classified as packing slips via SMS intake."""
     db = get_db()
     try:
-        rows = db.execute("""
-            SELECT ps.*, e.first_name as employee_name, p.name as project_name
-            FROM packing_slips ps
-            LEFT JOIN employees e ON ps.employee_id = e.id
-            LEFT JOIN projects p ON ps.project_id = p.id
-            ORDER BY ps.created_at DESC
-        """).fetchall()
-        slips = [dict(r) for r in rows]
-        can_edit = check_permission(None, "crewledger", "edit")
-        return _render_module("packing_slips.html", "crewledger", "packing_slips", packing_slips=slips, can_edit=can_edit)
+        try:
+            rows = db.execute("""
+                SELECT ps.*, e.first_name as employee_name, p.name as project_name
+                FROM packing_slips ps
+                LEFT JOIN employees e ON ps.employee_id = e.id
+                LEFT JOIN projects p ON ps.project_id = p.id
+                ORDER BY ps.created_at DESC
+            """).fetchall()
+            slips = [dict(r) for r in rows]
+        except Exception:
+            slips = []
+        return _render_module("packing_slips.html", "crewledger", "packing_slips", packing_slips=slips)
     finally:
         db.close()
 

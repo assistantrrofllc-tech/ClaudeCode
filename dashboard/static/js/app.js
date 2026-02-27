@@ -81,9 +81,9 @@ function openReceiptModal(receiptId) {
                 for (var i = 0; i < data.line_items.length; i++) {
                     var item = data.line_items[i];
                     html += '<tr class="li-detail-row" data-idx="' + i + '">';
-                    html += '<td>' + escapeHtml(item.item_name || '') + '</td>';
-                    html += '<td>' + (item.quantity || 1) + '</td>';
-                    html += '<td>' + formatMoney(item.extended_price) + '</td>';
+                    html += '<td><span>' + escapeHtml(item.item_name || '') + '</span></td>';
+                    html += '<td><span>' + (item.quantity || 1) + '</span></td>';
+                    html += '<td><span>' + formatMoney(item.extended_price) + '</span></td>';
                     html += '</tr>';
                 }
                 html += '</tbody></table>';
@@ -536,41 +536,6 @@ function saveReceiptEdit(receiptId) {
     });
 }
 
-function showEditHistory(receiptId) {
-    var details = document.getElementById('modal-receipt-details');
-
-    // Remove existing history panel
-    var existing = document.getElementById('edit-history-panel');
-    if (existing) { existing.remove(); return; }
-
-    var panel = document.createElement('div');
-    panel.id = 'edit-history-panel';
-    panel.className = 'edit-history';
-    panel.innerHTML = '<h4>Edit History</h4><div class="loading">Loading...</div>';
-    details.appendChild(panel);
-
-    fetch('/api/receipts/' + receiptId + '/edits')
-        .then(function(resp) { return resp.json(); })
-        .then(function(d) {
-            if (!d.edits || d.edits.length === 0) {
-                panel.innerHTML = '<h4>Edit History</h4><p class="text-muted">No edits recorded.</p>';
-                return;
-            }
-            var html = '<h4>Edit History</h4><table class="line-items-table">';
-            html += '<thead><tr><th>Field</th><th>Old</th><th>New</th><th>When</th></tr></thead><tbody>';
-            for (var i = 0; i < d.edits.length; i++) {
-                var e = d.edits[i];
-                html += '<tr><td>' + escapeHtml(e.field_changed) + '</td>';
-                html += '<td class="text-muted">' + escapeHtml(e.old_value || '—') + '</td>';
-                html += '<td>' + escapeHtml(e.new_value || '—') + '</td>';
-                html += '<td class="text-muted">' + escapeHtml(e.edited_at || '') + '</td></tr>';
-            }
-            html += '</tbody></table>';
-            panel.innerHTML = html;
-        });
-}
-
-
 // ── Confirm / Delete / Restore / Duplicate ──────────────
 
 function confirmReceipt(receiptId) {
@@ -739,39 +704,3 @@ function toggleFilters() {
 }
 
 
-// ── Inline Line Item Save (Detail Card) ────────────
-
-function saveInlineLineItems(receiptId) {
-    var msg = document.getElementById('li-save-msg');
-    if (msg) msg.innerHTML = '<span style="color:#6b7280;">Saving...</span>';
-
-    var rows = document.querySelectorAll('.li-detail-row');
-    var items = [];
-    for (var i = 0; i < rows.length; i++) {
-        var name = rows[i].querySelector('.li-d-name').value.trim();
-        if (!name) continue;
-        items.push({
-            item_name: name,
-            quantity: parseFloat(rows[i].querySelector('.li-d-qty').value) || 1,
-            unit_price: parseFloat(rows[i].querySelector('.li-d-price').value) || 0,
-            extended_price: parseFloat(rows[i].querySelector('.li-d-price').value) || 0,
-        });
-    }
-
-    fetch('/api/receipts/' + receiptId + '/line-items', {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ line_items: items }),
-    })
-    .then(function(resp) { return resp.json(); })
-    .then(function(d) {
-        if (msg) {
-            if (d.status === 'updated') {
-                msg.innerHTML = '<span style="color:#16a34a;">Saved</span>';
-                setTimeout(function() { msg.innerHTML = ''; }, 2000);
-            } else {
-                msg.innerHTML = '<span style="color:#dc2626;">' + (d.error || 'Failed') + '</span>';
-            }
-        }
-    });
-}
