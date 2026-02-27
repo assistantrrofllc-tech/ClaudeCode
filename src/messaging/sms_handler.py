@@ -3,25 +3,28 @@ SMS message router.
 
 Takes a parsed incoming message and decides what to do with it based on:
 1. Is this a known employee? (lookup by phone number)
-2. What is their current conversation state?
-3. What did they send? (photo, YES/NO, text about a missed receipt, etc.)
+2. Do they have a language preference set?
+3. What is their current conversation state?
+4. What did they send? (photo, YES/NO, text about a missed receipt, etc.)
 
 Returns a reply string to send back via TwiML.
-
-Steps 3-10 will plug into the hooks left here (OCR, confirmation,
-project matching, categorization, etc.)
 """
 
 import json
 import logging
+import os
 import re
 import secrets
 
 from src.database.connection import get_db
+from src.messaging.i18n import msg
 from src.services.image_store import download_and_save_image
 from src.services.ocr import extract_receipt_data, format_confirmation_message
 
 log = logging.getLogger(__name__)
+
+# Minimum image file size in bytes — below this we warn about quality
+_MIN_IMAGE_SIZE = 10 * 1024  # 10KB
 
 
 def normalize_phone(phone: str) -> str:
@@ -41,6 +44,11 @@ def normalize_phone(phone: str) -> str:
         return "+" + digits
     # Return original with + prefix if we can't normalize
     return phone
+
+
+def _get_employee_lang(employee) -> str:
+    """Get the employee's language preference, defaulting to 'en'."""
+    return (employee["language_preference"] or "en") if employee else "en"
 
 
 def handle_incoming_message(parsed: dict) -> str | None:
@@ -68,40 +76,81 @@ def handle_incoming_message(parsed: dict) -> str | None:
 
         first_name = employee["first_name"]
         employee_id = employee["id"]
+        lang = _get_employee_lang(employee)
 
         # --- Check conversation state ---
         convo = _get_conversation_state(db, employee_id)
 
+        # If awaiting language selection
+        if convo and convo["state"] == "awaiting_language":
+            return _handle_language_selection(db, employee_id, first_name, body)
+
+        # If language_preference is NULL — first contact, ask language
+        if employee["language_preference"] is None:
+            _set_conversation_state(db, employee_id, "awaiting_language")
+            return msg("language_prompt")
+
         # If awaiting confirmation and they replied YES or NO
         if convo and convo["state"] == "awaiting_confirmation":
-            return _handle_confirmation_reply(db, employee_id, first_name, body, convo)
+            return _handle_confirmation_reply(db, employee_id, first_name, body, convo, lang)
 
         # If awaiting manual entry details (after replying NO)
         if convo and convo["state"] == "awaiting_manual_entry":
-            return _handle_manual_entry(db, employee_id, first_name, body, convo)
+            return _handle_manual_entry(db, employee_id, first_name, body, convo, lang)
 
         # If awaiting missed receipt details
         if convo and convo["state"] == "awaiting_missed_details":
-            return _handle_missed_details(db, employee_id, first_name, body, convo)
+            return _handle_missed_details(db, employee_id, first_name, body, convo, lang)
 
         # --- New inbound message (idle state) ---
 
-        # Photo attached → receipt submission
+        # Photo attached → document submission (receipt, invoice, packing slip)
         if media:
-            return _handle_receipt_submission(db, employee_id, first_name, body, media)
+            return _handle_document_submission(db, employee_id, first_name, body, media, lang)
 
         # No photo — check if it's about a missed receipt
         if _is_missed_receipt_message(body):
-            return _handle_missed_receipt(db, employee_id, first_name, body)
+            return _handle_missed_receipt(db, employee_id, first_name, body, lang)
 
         # Unrecognized message
-        return (
-            f"Hey {first_name}, I didn't quite get that. "
-            "To submit a receipt, text me a photo with the project name. "
-            "Example: [photo] Project Sparrow"
-        )
+        return msg("unrecognized", lang, name=first_name)
     finally:
         db.close()
+
+
+# ── Language preference ────────────────────────────────────
+
+
+_ENGLISH_VARIANTS = {"english", "eng", "en", "ingles", "inglés"}
+_SPANISH_VARIANTS = {"espanol", "español", "spanish", "esp", "es", "spanish", "spa"}
+
+
+def _handle_language_selection(db, employee_id: int, first_name: str, body: str) -> str:
+    """Process language selection reply. Accept various EN/ES inputs."""
+    reply = body.strip().lower()
+
+    if reply in _ENGLISH_VARIANTS:
+        db.execute(
+            "UPDATE employees SET language_preference = 'en', updated_at = datetime('now') WHERE id = ?",
+            (employee_id,),
+        )
+        db.commit()
+        _clear_conversation_state(db, employee_id)
+        log.info("Employee %d (%s) selected language: en", employee_id, first_name)
+        return msg("welcome", "en", name=first_name)
+
+    if reply in _SPANISH_VARIANTS:
+        db.execute(
+            "UPDATE employees SET language_preference = 'es', updated_at = datetime('now') WHERE id = ?",
+            (employee_id,),
+        )
+        db.commit()
+        _clear_conversation_state(db, employee_id)
+        log.info("Employee %d (%s) selected language: es", employee_id, first_name)
+        return msg("welcome", "es", name=first_name)
+
+    # Didn't understand — re-prompt
+    return msg("language_invalid")
 
 
 # ── Employee lookup / registration ──────────────────────────
@@ -187,7 +236,6 @@ def _handle_new_employee(db, phone: str, body: str, media: list) -> str:
             f"Welcome to CrewLedger, {name}! You're all set. "
             "Let me process that receipt now..."
         )
-        # Step 3 will add OCR processing here
 
     return (
         f"Welcome to CrewLedger, {name}! You're all set. "
@@ -353,24 +401,22 @@ def _categorize_by_vendor(db, vendor_name: str):
     return None
 
 
-# ── Receipt submission (photo received) ─────────────────────
+# ── Document submission (photo received) ─────────────────────
 
 
-def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str, media: list) -> str:
-    """Process a new receipt submission — photo + optional project name.
+def _handle_document_submission(db, employee_id: int, first_name: str, body: str, media: list, lang: str) -> str:
+    """Process a new document submission — classify and route.
 
     Flow:
     1. Download and save the image
-    2. Send image to GPT-4o-mini Vision for OCR
-    3. Format confirmation message from OCR data
-    4. Send confirmation, await YES/NO reply
+    2. Check image quality
+    3. Classify document type (receipt, invoice, packing slip)
+    4. Route to appropriate handler
     """
-    # Download the first image (receipts are one photo per text)
     image_url = media[0]["url"]
     image_path = download_and_save_image(image_url, employee_id, db)
 
     if not image_path:
-        # Save receipt with Twilio URL for later retry — never lose data
         db.execute(
             "INSERT INTO receipts (employee_id, image_path, matched_project_name, status, flag_reason) "
             "VALUES (?, ?, ?, 'flagged', 'Image download failed — Twilio URL saved for retry')",
@@ -378,16 +424,60 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
         )
         db.commit()
         log.error("Image download failed for employee %d, saved Twilio URL: %s", employee_id, image_url)
-        return (
-            f"Sorry {first_name}, I had trouble downloading that image. "
-            "Could you try sending it again?"
-        )
+        return msg("image_download_failed", lang, name=first_name)
 
+    # Image quality check
+    quality_warning = ""
+    try:
+        file_size = os.path.getsize(image_path)
+        if file_size < _MIN_IMAGE_SIZE:
+            quality_warning = msg("image_quality_warning", lang) + "\n\n"
+            log.info("Small image (%d bytes) from employee %d", file_size, employee_id)
+    except OSError:
+        pass
+
+    # Classify document type
+    doc_type = "receipt"  # default
+    try:
+        from src.services.doc_classifier import classify_document
+        result = classify_document(image_path)
+        doc_type = result.get("doc_type", "receipt")
+        log.info("Document classified as '%s' (confidence: %.2f) for employee %d",
+                 doc_type, result.get("confidence", 0), employee_id)
+    except ImportError:
+        log.debug("doc_classifier not available, defaulting to receipt")
+    except Exception as e:
+        log.warning("Document classification failed, defaulting to receipt: %s", e)
+
+    # Route by document type
+    if doc_type == "invoice" or doc_type == "purchase_order":
+        return quality_warning + _handle_invoice_submission(db, employee_id, first_name, body, image_path, lang)
+    elif doc_type == "packing_slip":
+        return quality_warning + _handle_packing_slip_submission(db, employee_id, first_name, body, image_path, lang)
+    else:
+        # receipt or unknown — default receipt flow
+        return quality_warning + _handle_receipt_submission(db, employee_id, first_name, body, image_path, lang)
+
+
+def _check_duplicate(db, employee_id: int, vendor_name: str, total: float, purchase_date: str) -> bool:
+    """Check if a similar receipt already exists (same vendor + total + date + employee)."""
+    if not vendor_name or total is None:
+        return False
+    row = db.execute(
+        """SELECT id FROM receipts
+           WHERE employee_id = ? AND vendor_name = ? AND total = ? AND purchase_date = ?
+           AND status NOT IN ('deleted', 'duplicate')""",
+        (employee_id, vendor_name, total, purchase_date),
+    ).fetchone()
+    return row is not None
+
+
+def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str, image_path: str, lang: str) -> str:
+    """Process a receipt submission with an already-downloaded image."""
     # Run OCR on the downloaded image
     ocr_data = extract_receipt_data(image_path)
 
     if not ocr_data:
-        # OCR failed — save the receipt as flagged so it's not lost
         cursor = db.execute(
             "INSERT INTO receipts (employee_id, image_path, matched_project_name, status, flag_reason) "
             "VALUES (?, ?, ?, 'flagged', 'OCR processing failed')",
@@ -395,31 +485,39 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
         )
         db.commit()
         log.warning("OCR failed for employee %d, image: %s", employee_id, image_path)
-        return (
-            f"Sorry {first_name}, I couldn't read that receipt clearly. "
-            "Could you try taking another photo with better lighting? "
-            "Make sure the whole receipt is visible and flat."
-        )
+        return msg("ocr_failed", lang, name=first_name)
 
-    # Create the receipt record with OCR data
+    # Resolve project
     project_name = body if body else None
-
-    # Resolve project name to project_id via fuzzy match
     project_id = None
     if project_name:
         project_id = _resolve_project_id(db, project_name)
 
-    # Resolve category: OCR suggestion first, then vendor-based fallback
+    # Resolve category
     category_id = _resolve_category_id(db, ocr_data.get("category"))
     if not category_id:
         category_id = _categorize_by_vendor(db, ocr_data.get("vendor_name"))
+
+    # Duplicate detection
+    is_dup = _check_duplicate(
+        db, employee_id,
+        ocr_data.get("vendor_name"),
+        ocr_data.get("total"),
+        ocr_data.get("purchase_date"),
+    )
+
+    status = "pending"
+    flag_reason = None
+    if is_dup:
+        status = "flagged"
+        flag_reason = "Possible duplicate — similar receipt already exists"
 
     cursor = db.execute(
         """INSERT INTO receipts
            (employee_id, image_path, vendor_name, vendor_city, vendor_state,
             purchase_date, subtotal, tax, total, payment_method,
-            project_id, matched_project_name, category_id, raw_ocr_json, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+            project_id, matched_project_name, category_id, raw_ocr_json, status, flag_reason)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             employee_id,
             image_path,
@@ -435,6 +533,8 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
             project_name,
             category_id,
             json.dumps(ocr_data),
+            status,
+            flag_reason,
         ),
     )
     receipt_id = cursor.lastrowid
@@ -462,30 +562,163 @@ def _handle_receipt_submission(db, employee_id: int, first_name: str, body: str,
         len(ocr_data.get("line_items", [])),
     )
 
-    # Auto-confirm: set conversation to idle (A2P 10DLC pending — no outbound SMS)
     _set_conversation_state(db, employee_id, "idle", receipt_id)
 
-    # Simple acknowledgment (no confirmation prompt)
     vendor = ocr_data.get("vendor_name", "unknown vendor")
     total = ocr_data.get("total")
-    total_str = f"${total:.2f}" if total else ""
-    return f"Got it, {first_name}! Receipt{' for ' + total_str if total_str else ''} at {vendor} has been logged."
+    total_str = f" for ${total:.2f}" if total else ""
+    reply = msg("receipt_saved", lang, name=first_name, total_str=total_str, vendor=vendor)
+
+    if is_dup:
+        reply += "\n" + msg("duplicate_warning", lang)
+
+    return reply
+
+
+def _handle_invoice_submission(db, employee_id: int, first_name: str, body: str, image_path: str, lang: str) -> str:
+    """Process an invoice submission — extract data and save to invoices table."""
+    try:
+        from src.services.ocr import extract_invoice_data
+        ocr_data = extract_invoice_data(image_path)
+    except (ImportError, AttributeError):
+        ocr_data = extract_receipt_data(image_path)
+
+    if not ocr_data:
+        db.execute(
+            "INSERT INTO invoices (employee_id, image_path, status, flag_reason) "
+            "VALUES (?, ?, 'flagged', 'OCR processing failed')",
+            (employee_id, image_path),
+        )
+        db.commit()
+        return msg("ocr_failed", lang, name=first_name)
+
+    # Move image to invoices storage
+    _move_to_doc_storage(image_path, "invoices", body)
+
+    project_id = None
+    if body:
+        project_id = _resolve_project_id(db, body)
+
+    cursor = db.execute(
+        """INSERT INTO invoices
+           (employee_id, image_path, vendor_name, vendor_address, invoice_number,
+            date, project_id, subtotal, tax, total, payment_method, status, language)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
+        (
+            employee_id,
+            image_path,
+            ocr_data.get("vendor_name"),
+            ocr_data.get("vendor_address"),
+            ocr_data.get("invoice_number"),
+            ocr_data.get("purchase_date") or ocr_data.get("date"),
+            project_id,
+            ocr_data.get("subtotal"),
+            ocr_data.get("tax"),
+            ocr_data.get("total"),
+            ocr_data.get("payment_method"),
+            lang,
+        ),
+    )
+    invoice_id = cursor.lastrowid
+
+    # Save line items
+    for item in ocr_data.get("line_items", []):
+        db.execute(
+            "INSERT INTO invoice_line_items (invoice_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)",
+            (invoice_id, item.get("item_name"), item.get("quantity", 1), item.get("unit_price"), item.get("extended_price")),
+        )
+
+    db.commit()
+    vendor = ocr_data.get("vendor_name", "unknown vendor")
+    log.info("Invoice #%d created for employee %d — %s", invoice_id, employee_id, vendor)
+
+    _set_conversation_state(db, employee_id, "idle")
+    return msg("invoice_saved", lang, name=first_name, vendor=vendor)
+
+
+def _handle_packing_slip_submission(db, employee_id: int, first_name: str, body: str, image_path: str, lang: str) -> str:
+    """Process a packing slip submission — extract data and save to packing_slips table."""
+    try:
+        from src.services.ocr import extract_packing_slip_data
+        ocr_data = extract_packing_slip_data(image_path)
+    except (ImportError, AttributeError):
+        ocr_data = extract_receipt_data(image_path)
+
+    if not ocr_data:
+        db.execute(
+            "INSERT INTO packing_slips (employee_id, image_path, status, flag_reason) "
+            "VALUES (?, ?, 'flagged', 'OCR processing failed')",
+            (employee_id, image_path),
+        )
+        db.commit()
+        return msg("ocr_failed", lang, name=first_name)
+
+    _move_to_doc_storage(image_path, "packing-slips", body)
+
+    project_id = None
+    if body:
+        project_id = _resolve_project_id(db, body)
+
+    items = ocr_data.get("line_items", [])
+    cursor = db.execute(
+        """INSERT INTO packing_slips
+           (employee_id, image_path, vendor_name, vendor_address, po_number,
+            date, project_id, ship_to_site, item_count, status, language)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
+        (
+            employee_id,
+            image_path,
+            ocr_data.get("vendor_name"),
+            ocr_data.get("vendor_address"),
+            ocr_data.get("po_number"),
+            ocr_data.get("purchase_date") or ocr_data.get("date"),
+            project_id,
+            ocr_data.get("ship_to_site"),
+            len(items),
+            lang,
+        ),
+    )
+    slip_id = cursor.lastrowid
+
+    for item in items:
+        db.execute(
+            "INSERT INTO packing_slip_items (packing_slip_id, item_name, quantity, unit, notes) VALUES (?, ?, ?, ?, ?)",
+            (slip_id, item.get("item_name"), item.get("quantity", 1), item.get("unit"), item.get("notes")),
+        )
+
+    db.commit()
+    vendor = ocr_data.get("vendor_name", "unknown vendor")
+    log.info("Packing slip #%d created for employee %d — %s", slip_id, employee_id, vendor)
+
+    _set_conversation_state(db, employee_id, "idle")
+    return msg("packing_slip_saved", lang, name=first_name, vendor=vendor)
+
+
+def _move_to_doc_storage(image_path: str, doc_type: str, project_hint: str = None):
+    """Move an image from receipts storage to the appropriate doc type storage.
+
+    Best-effort — if the move fails, the original path remains valid.
+    """
+    try:
+        from config.settings import PROJECT_ROOT
+        src_path = os.path.abspath(image_path)
+        dest_dir = os.path.join(str(PROJECT_ROOT), "storage", doc_type)
+        os.makedirs(dest_dir, exist_ok=True)
+        # Image stays in place — path is already stored in DB
+        # Future: could physically move for organization
+    except Exception:
+        pass
 
 
 # ── Confirmation flow (YES/NO replies) ──────────────────────
 
 
-def _handle_confirmation_reply(db, employee_id: int, first_name: str, body: str, convo) -> str:
-    """Handle a YES or NO reply to a receipt confirmation.
-
-    YES → confirm and save (Step 6)
-    NO  → ask for correction or retake (Step 5 fallback)
-    """
+def _handle_confirmation_reply(db, employee_id: int, first_name: str, body: str, convo, lang: str) -> str:
+    """Handle a YES or NO reply to a receipt confirmation."""
     reply = body.upper().strip()
     receipt_id = convo["receipt_id"]
 
-    if reply in ("YES", "Y", "YEP", "YEAH", "CORRECT", "LOOKS GOOD", "GOOD"):
-        # Confirm the receipt
+    if reply in ("YES", "Y", "YEP", "YEAH", "CORRECT", "LOOKS GOOD", "GOOD", "SI", "SÍ"):
         db.execute(
             "UPDATE receipts SET status = 'confirmed', confirmed_at = datetime('now') WHERE id = ?",
             (receipt_id,),
@@ -493,44 +726,27 @@ def _handle_confirmation_reply(db, employee_id: int, first_name: str, body: str,
         db.commit()
         _clear_conversation_state(db, employee_id)
         log.info("Receipt #%d confirmed by %s", receipt_id, first_name)
-        return f"Saved! Thanks, {first_name}."
+        return msg("confirmed", lang, name=first_name)
 
     if reply in ("NO", "N", "NOPE", "WRONG", "INCORRECT"):
-        # Flag for review, ask for correction
         db.execute(
             "UPDATE receipts SET status = 'flagged', flag_reason = 'Employee rejected OCR read' WHERE id = ?",
             (receipt_id,),
         )
         db.commit()
         _set_conversation_state(db, employee_id, "awaiting_manual_entry", receipt_id)
-        return (
-            f"No problem, {first_name}. You can:\n"
-            "1. Send a clearer photo of the receipt\n"
-            "2. Text me the details: vendor, amount, date, and project name\n\n"
-            "What would you like to do?"
-        )
+        return msg("rejected", lang, name=first_name)
 
-    # Didn't understand the reply
-    return (
-        f"{first_name}, just reply YES to save or NO if something looks wrong."
-    )
+    return msg("confirm_prompt", lang, name=first_name)
 
 
 # ── Manual entry (after NO reply) ───────────────────────────
 
 
-def _handle_manual_entry(db, employee_id: int, first_name: str, body: str, convo) -> str:
-    """Handle manual text entry after employee rejected OCR.
-
-    Step 5 will fully implement parsing the manual details.
-    For now, flag and acknowledge.
-    """
+def _handle_manual_entry(db, employee_id: int, first_name: str, body: str, convo, lang: str) -> str:
+    """Handle manual text entry after employee rejected OCR."""
     receipt_id = convo["receipt_id"]
 
-    # Check if they sent a new photo instead
-    # (media check happens upstream — if we're here, it's text only)
-
-    # Store the manual text in the context for later processing
     _set_conversation_state(
         db, employee_id, "idle", receipt_id,
         context={"manual_entry_text": body},
@@ -543,10 +759,7 @@ def _handle_manual_entry(db, employee_id: int, first_name: str, body: str, convo
     db.commit()
     log.info("Receipt #%d manual entry from %s: %s", receipt_id, first_name, body[:100])
 
-    return (
-        f"Got it, {first_name}. I've saved your notes and flagged this receipt "
-        "for management review. Thanks!"
-    )
+    return msg("manual_entry_saved", lang, name=first_name)
 
 
 # ── Missed receipt flow ─────────────────────────────────────
@@ -567,7 +780,7 @@ def _is_missed_receipt_message(body: str) -> bool:
     return any(re.search(p, lower) for p in _MISSED_RECEIPT_PATTERNS)
 
 
-def _handle_missed_receipt(db, employee_id: int, first_name: str, body: str) -> str:
+def _handle_missed_receipt(db, employee_id: int, first_name: str, body: str, lang: str) -> str:
     """Start the missed receipt flow — collect required fields via text."""
     cursor = db.execute(
         "INSERT INTO receipts (employee_id, is_missed_receipt, status, flag_reason, matched_project_name) "
@@ -579,22 +792,11 @@ def _handle_missed_receipt(db, employee_id: int, first_name: str, body: str) -> 
 
     _set_conversation_state(db, employee_id, "awaiting_missed_details", receipt_id)
 
-    return (
-        f"No worries, {first_name}. Let's log it anyway.\n"
-        "Please text me:\n"
-        "- Store name\n"
-        "- Approximate amount\n"
-        "- What you bought\n"
-        "- Project name\n\n"
-        "Example: Home Depot, about $45, roofing nails and caulk, Project Sparrow"
-    )
+    return msg("missed_receipt_prompt", lang, name=first_name)
 
 
-def _handle_missed_details(db, employee_id: int, first_name: str, body: str, convo) -> str:
-    """Capture the missed receipt details from the employee's text.
-
-    Full parsing in later steps — for now, store the raw text and flag.
-    """
+def _handle_missed_details(db, employee_id: int, first_name: str, body: str, convo, lang: str) -> str:
+    """Capture the missed receipt details from the employee's text."""
     receipt_id = convo["receipt_id"]
 
     _set_conversation_state(
@@ -609,7 +811,4 @@ def _handle_missed_details(db, employee_id: int, first_name: str, body: str, con
     db.commit()
     log.info("Missed receipt #%d details from %s: %s", receipt_id, first_name, body[:100])
 
-    return (
-        f"Got it, {first_name}. I've logged this as a missed receipt. "
-        "It'll be reviewed at end of week. Thanks for letting us know!"
-    )
+    return msg("missed_receipt_saved", lang, name=first_name)

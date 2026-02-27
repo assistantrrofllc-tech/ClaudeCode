@@ -2,6 +2,56 @@
 
 All notable changes to CrewOS / CrewLedger.
 
+## [2026-02-27] CrewLedger 1PM Ramp-Up — Language, Classification, Dashboard Redesign
+
+### Database
+- Add `language_preference` column to employees (NULL = first contact, 'en'/'es')
+- New tables: `invoices`, `invoice_line_items`, `packing_slips`, `packing_slip_items`, `purchase_orders`
+- New conversation states: `awaiting_language`, `awaiting_doc_confirm`
+- Migration script: `scripts/migrate_add_language_and_tables.py`
+
+### SMS Language Preference
+- First contact from new employee triggers bilingual language prompt (English/Espanol)
+- Accepts variants: english/eng/ingles, espanol/spanish/esp, etc.
+- All SMS responses now routed through i18n catalog (`src/messaging/i18n.py`)
+- "SI"/"SÍ" accepted as YES confirmation in Spanish
+
+### Document Classification
+- New `src/services/doc_classifier.py` — GPT-4o-mini Vision classifies images as receipt/invoice/packing_slip/purchase_order/unknown
+- Uses `detail: "low"` for cost efficiency; falls back to receipt on failure
+- Invoices and packing slips route to dedicated OCR prompts and storage tables
+- New extraction prompts in `src/services/ocr.py` for invoices and packing slips
+
+### SMS Flow Enhancements
+- Image quality warning for files < 10KB (soft warning, still processed)
+- Duplicate detection: vendor + total + date + employee_id match flags as duplicate
+- Enhanced receipt confirmation includes vendor, location, total, item count, project
+
+### Dashboard Redesign
+- 4 clickable stat cards: This Week, This Month, and 2 most recent projects → filtered ledger views
+- Total Receipts + Flagged counts moved to secondary stats row
+- URL params (`?period=week`, `?project=1`) auto-apply filters on ledger page
+
+### Navigation
+- Added Invoices and Packing Slips tabs in CrewLedger sub-nav
+- New list views: `/invoices` and `/packing-slips` with empty state messages
+
+### Receipt Modal
+- Fields now read-only by default (vendor, date, amounts displayed as text)
+- Pencil edit icon in top-right (visible only for company_admin/super_admin)
+- Edit mode converts to input fields with Save/Cancel buttons
+- Notes field remains always-interactive
+
+### Admin
+- Language column added to employees table in dashboard
+- Language preference editable via employee API
+- Storage paths added for invoices and packing slips in config
+
+### Tests
+- 287 passing (52 new), no regressions
+- New test files: `test_schema.py`, `test_doc_classifier.py`, `test_language_pref.py`, `test_sms_flow.py`
+- Updated `test_twilio_webhook.py` for language preference compatibility
+
 ## [2026-02-26] CrewLedger Mobile Cleanup v2 — Fullscreen Viewer, Filter Collapse, Inline Editing
 
 - **4-column mobile ledger:** Date, Employee, Vendor, Amount only at ≤768px. Project column now hidden on mobile too.

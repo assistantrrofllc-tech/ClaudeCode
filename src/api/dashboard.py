@@ -39,6 +39,8 @@ MODULE_NAVS = {
     "crewledger": [
         {"id": "dashboard", "label": "Dashboard", "href": "/ledger/dashboard"},
         {"id": "ledger", "label": "Ledger", "href": "/ledger"},
+        {"id": "invoices", "label": "Invoices", "href": "/invoices"},
+        {"id": "packing_slips", "label": "Packing Slips", "href": "/packing-slips"},
         {"id": "projects", "label": "Projects", "href": "/projects"},
         {"id": "settings", "label": "Settings", "href": "/settings"},
     ],
@@ -507,7 +509,7 @@ def api_update_employee(employee_id):
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    allowed = {"first_name", "full_name", "email", "role", "crew", "phone_number", "notes", "nickname", "is_driver"}
+    allowed = {"first_name", "full_name", "email", "role", "crew", "phone_number", "notes", "nickname", "is_driver", "language_preference"}
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400
@@ -839,6 +841,48 @@ def ledger_page():
             categories=[dict(c) for c in categories],
             can_edit=can_edit,
         )
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/invoices")
+@login_required
+@require_module_access("crewledger")
+def invoices_page():
+    """Invoices list view — documents classified as invoices via SMS intake."""
+    db = get_db()
+    try:
+        rows = db.execute("""
+            SELECT i.*, e.first_name as employee_name, p.name as project_name
+            FROM invoices i
+            LEFT JOIN employees e ON i.employee_id = e.id
+            LEFT JOIN projects p ON i.project_id = p.id
+            ORDER BY i.created_at DESC
+        """).fetchall()
+        invoices = [dict(r) for r in rows]
+        can_edit = check_permission(None, "crewledger", "edit")
+        return _render_module("invoices.html", "crewledger", "invoices", invoices=invoices, can_edit=can_edit)
+    finally:
+        db.close()
+
+
+@dashboard_bp.route("/packing-slips")
+@login_required
+@require_module_access("crewledger")
+def packing_slips_page():
+    """Packing slips list view — documents classified as packing slips via SMS intake."""
+    db = get_db()
+    try:
+        rows = db.execute("""
+            SELECT ps.*, e.first_name as employee_name, p.name as project_name
+            FROM packing_slips ps
+            LEFT JOIN employees e ON ps.employee_id = e.id
+            LEFT JOIN projects p ON ps.project_id = p.id
+            ORDER BY ps.created_at DESC
+        """).fetchall()
+        slips = [dict(r) for r in rows]
+        can_edit = check_permission(None, "crewledger", "edit")
+        return _render_module("packing_slips.html", "crewledger", "packing_slips", packing_slips=slips, can_edit=can_edit)
     finally:
         db.close()
 
@@ -2392,6 +2436,24 @@ def _get_dashboard_stats(db) -> dict:
 
     unknown_count = db.execute("SELECT COUNT(*) as cnt FROM unknown_contacts").fetchone()["cnt"]
 
+    # Most recent projects by receipt activity (for dashboard cards)
+    recent_projects = []
+    proj_rows = db.execute("""
+        SELECT p.id, p.name, COALESCE(SUM(r.total), 0) as total_spend
+        FROM projects p
+        JOIN receipts r ON r.project_id = p.id
+        WHERE r.status NOT IN ('deleted', 'duplicate')
+        GROUP BY p.id
+        ORDER BY MAX(r.created_at) DESC
+        LIMIT 2
+    """).fetchall()
+    for pr in proj_rows:
+        recent_projects.append({
+            "id": pr["id"],
+            "name": pr["name"],
+            "total_spend": round(pr["total_spend"], 2),
+        })
+
     return {
         "week_spend": round(row["week_spend"], 2),
         "month_spend": round(row["month_spend"], 2),
@@ -2402,6 +2464,7 @@ def _get_dashboard_stats(db) -> dict:
         "employee_count": employee_count,
         "project_count": project_count,
         "unknown_count": unknown_count,
+        "recent_projects": recent_projects,
     }
 
 

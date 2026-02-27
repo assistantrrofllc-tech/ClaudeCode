@@ -60,6 +60,7 @@
                 <th>Phone</th>
                 <th>Crew</th>
                 <th>Role</th>
+                <th>Language</th>
                 <th>Status</th>
                 <th>Last Submission</th>
                 <th></th>
@@ -75,6 +76,7 @@
                 <td class="cell-phone">{{ e.phone_number }}</td>
                 <td>{{ e.crew or '—' }}</td>
                 <td>{{ e.role or '—' }}</td>
+                <td>{{ 'English' if e.language_preference == 'en' else ('Espanol' if e.language_preference == 'es' else '—') }}</td>
                 <td>
                     {% if e.is_active %}
                     <span class="badge badge--confirmed">Active</span>

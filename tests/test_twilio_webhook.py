@@ -111,7 +111,7 @@ def test_inactive_employee_silenced():
     """Inactive employee texts in → silenced, no response."""
     setup_test_db()
     db = get_db(TEST_DB)
-    db.execute("INSERT INTO employees (phone_number, first_name, is_active) VALUES ('+14075551234', 'Omar', 0)")
+    db.execute("INSERT INTO employees (phone_number, first_name, is_active, language_preference) VALUES ('+14075551234', 'Omar', 0, 'en')")
     db.commit()
     db.close()
 
@@ -126,7 +126,7 @@ def test_receipt_submission_with_photo():
     """Known employee sends a photo → OCR runs, receipt created with data, confirmation sent."""
     setup_test_db()
     db = get_db(TEST_DB)
-    db.execute("INSERT INTO employees (phone_number, first_name) VALUES ('+14075551234', 'Omar')")
+    db.execute("INSERT INTO employees (phone_number, first_name, language_preference) VALUES ('+14075551234', 'Omar', 'en')")
     db.commit()
     db.close()
 
@@ -197,7 +197,7 @@ def test_receipt_submission_ocr_failure():
     """OCR fails → receipt flagged, user asked to retake photo."""
     setup_test_db()
     db = get_db(TEST_DB)
-    db.execute("INSERT INTO employees (phone_number, first_name) VALUES ('+14075551234', 'Omar')")
+    db.execute("INSERT INTO employees (phone_number, first_name, language_preference) VALUES ('+14075551234', 'Omar', 'en')")
     db.commit()
     db.close()
 
@@ -232,7 +232,7 @@ def test_confirmation_yes():
     """Employee replies YES → receipt confirmed."""
     setup_test_db()
     db = get_db(TEST_DB)
-    db.execute("INSERT INTO employees (phone_number, first_name) VALUES ('+14075551234', 'Omar')")
+    db.execute("INSERT INTO employees (phone_number, first_name, language_preference) VALUES ('+14075551234', 'Omar', 'en')")
     db.execute("INSERT INTO receipts (employee_id, status) VALUES (1, 'pending')")
     db.execute("INSERT INTO conversation_state (employee_id, receipt_id, state) VALUES (1, 1, 'awaiting_confirmation')")
     db.commit()
@@ -257,7 +257,7 @@ def test_confirmation_no():
     """Employee replies NO → receipt flagged, asks for correction."""
     setup_test_db()
     db = get_db(TEST_DB)
-    db.execute("INSERT INTO employees (phone_number, first_name) VALUES ('+14075551234', 'Omar')")
+    db.execute("INSERT INTO employees (phone_number, first_name, language_preference) VALUES ('+14075551234', 'Omar', 'en')")
     db.execute("INSERT INTO receipts (employee_id, status) VALUES (1, 'pending')")
     db.execute("INSERT INTO conversation_state (employee_id, receipt_id, state) VALUES (1, 1, 'awaiting_confirmation')")
     db.commit()
@@ -281,7 +281,7 @@ def test_missed_receipt():
     """Employee texts about a missed receipt → starts missed flow."""
     setup_test_db()
     db = get_db(TEST_DB)
-    db.execute("INSERT INTO employees (phone_number, first_name) VALUES ('+14075551234', 'Omar')")
+    db.execute("INSERT INTO employees (phone_number, first_name, language_preference) VALUES ('+14075551234', 'Omar', 'en')")
     db.commit()
     db.close()
 
@@ -305,7 +305,7 @@ def test_missed_receipt_details():
     """Employee provides missed receipt details → saved and idle."""
     setup_test_db()
     db = get_db(TEST_DB)
-    db.execute("INSERT INTO employees (phone_number, first_name) VALUES ('+14075551234', 'Omar')")
+    db.execute("INSERT INTO employees (phone_number, first_name, language_preference) VALUES ('+14075551234', 'Omar', 'en')")
     db.execute("INSERT INTO receipts (employee_id, is_missed_receipt, status, flag_reason) VALUES (1, 1, 'flagged', 'Missed receipt')")
     db.execute("INSERT INTO conversation_state (employee_id, receipt_id, state) VALUES (1, 1, 'awaiting_missed_details')")
     db.commit()
@@ -327,7 +327,7 @@ def test_unrecognized_message():
     """Known employee sends gibberish → helpful hint."""
     setup_test_db()
     db = get_db(TEST_DB)
-    db.execute("INSERT INTO employees (phone_number, first_name) VALUES ('+14075551234', 'Omar')")
+    db.execute("INSERT INTO employees (phone_number, first_name, language_preference) VALUES ('+14075551234', 'Omar', 'en')")
     db.commit()
     db.close()
 
@@ -342,7 +342,7 @@ def test_twiml_response_format_known_employee():
     """Known employee gets valid TwiML XML with <Message>."""
     setup_test_db()
     db = get_db(TEST_DB)
-    db.execute("INSERT INTO employees (phone_number, first_name) VALUES ('+14075551234', 'Omar')")
+    db.execute("INSERT INTO employees (phone_number, first_name, language_preference) VALUES ('+14075551234', 'Omar', 'en')")
     db.commit()
     db.close()
 

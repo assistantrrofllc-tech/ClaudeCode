@@ -515,6 +515,24 @@ function formatDateShort(dateStr) {
     return dateStr;
 }
 
+// Apply URL params as initial filters on page load
+(function() {
+    var urlParams = new URLSearchParams(window.location.search);
+    var period = urlParams.get('period');
+    var project = urlParams.get('project');
+
+    if (period && ['today', 'week', 'month', 'ytd'].indexOf(period) >= 0) {
+        currentPeriod = period;
+        document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+        var btn = document.querySelector('[data-period="' + period + '"]');
+        if (btn) btn.classList.add('active');
+    }
+    if (project) {
+        var projSelect = document.getElementById('project-filter');
+        if (projSelect) projSelect.value = project;
+    }
+})();
+
 // Load on page ready
 loadLedger();
 </script>

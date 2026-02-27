@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS employees (
     notes           TEXT,
     system_role     TEXT    DEFAULT 'employee'
                            CHECK(system_role IN ('super_admin', 'company_admin', 'manager', 'employee')),
+    language_preference TEXT DEFAULT NULL,
     is_active       INTEGER DEFAULT 1,
     created_at      TEXT    DEFAULT (datetime('now')),
     updated_at      TEXT    DEFAULT (datetime('now'))
@@ -159,7 +160,9 @@ CREATE TABLE IF NOT EXISTS conversation_state (
                                'idle',
                                'awaiting_confirmation',
                                'awaiting_manual_entry',
-                               'awaiting_missed_details'
+                               'awaiting_missed_details',
+                               'awaiting_language',
+                               'awaiting_doc_confirm'
                            )),
     context_json    TEXT,
     created_at      TEXT    DEFAULT (datetime('now')),
@@ -481,6 +484,135 @@ CREATE TABLE IF NOT EXISTS project_assignments (
     created_at      TEXT    DEFAULT (datetime('now')),
     UNIQUE(project_name)
 );
+
+-- ============================================================
+-- INVOICES
+-- Document intake: invoices submitted via SMS, classified by
+-- GPT-4o-mini Vision. Mirrors receipt structure with invoice-
+-- specific fields (invoice_number, vendor_address).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS invoices (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id     INTEGER NOT NULL,
+    vendor_name     TEXT,
+    vendor_address  TEXT,
+    invoice_number  TEXT,
+    date            TEXT,
+    project_id      INTEGER,
+    subtotal        REAL,
+    tax             REAL,
+    total           REAL,
+    payment_method  TEXT,
+    status          TEXT    DEFAULT 'pending'
+                           CHECK(status IN ('pending', 'confirmed', 'flagged', 'rejected', 'deleted', 'duplicate')),
+    flag_reason     TEXT,
+    image_path      TEXT,
+    ocr_confidence  REAL,
+    language        TEXT,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (employee_id) REFERENCES employees(id),
+    FOREIGN KEY (project_id)  REFERENCES projects(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_employee   ON invoices(employee_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_project    ON invoices(project_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status     ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_created    ON invoices(created_at);
+
+-- ============================================================
+-- INVOICE LINE ITEMS
+-- Individual line items from an invoice.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS invoice_line_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id      INTEGER NOT NULL,
+    item_name       TEXT,
+    quantity        REAL    DEFAULT 1,
+    unit_price      REAL,
+    total_price     REAL,
+    FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_inv_li_invoice ON invoice_line_items(invoice_id);
+
+-- ============================================================
+-- PACKING SLIPS
+-- Document intake: packing slips submitted via SMS.
+-- Tracks shipment contents for material verification.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS packing_slips (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id     INTEGER NOT NULL,
+    vendor_name     TEXT,
+    vendor_address  TEXT,
+    po_number       TEXT,
+    date            TEXT,
+    project_id      INTEGER,
+    ship_to_site    TEXT,
+    item_count      INTEGER DEFAULT 0,
+    status          TEXT    DEFAULT 'pending'
+                           CHECK(status IN ('pending', 'confirmed', 'flagged', 'rejected', 'deleted', 'duplicate')),
+    flag_reason     TEXT,
+    image_path      TEXT,
+    ocr_confidence  REAL,
+    language        TEXT,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (employee_id) REFERENCES employees(id),
+    FOREIGN KEY (project_id)  REFERENCES projects(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_packing_slips_employee ON packing_slips(employee_id);
+CREATE INDEX IF NOT EXISTS idx_packing_slips_project  ON packing_slips(project_id);
+CREATE INDEX IF NOT EXISTS idx_packing_slips_status   ON packing_slips(status);
+CREATE INDEX IF NOT EXISTS idx_packing_slips_created  ON packing_slips(created_at);
+
+-- ============================================================
+-- PACKING SLIP ITEMS
+-- Individual items from a packing slip.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS packing_slip_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    packing_slip_id INTEGER NOT NULL,
+    item_name       TEXT,
+    quantity        REAL    DEFAULT 1,
+    unit            TEXT,
+    notes           TEXT,
+    FOREIGN KEY (packing_slip_id) REFERENCES packing_slips(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ps_items_slip ON packing_slip_items(packing_slip_id);
+
+-- ============================================================
+-- PURCHASE ORDERS
+-- Document intake: purchase orders. Same structure as invoices
+-- for future use — routes via doc classifier.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id     INTEGER NOT NULL,
+    vendor_name     TEXT,
+    vendor_address  TEXT,
+    po_number       TEXT,
+    date            TEXT,
+    project_id      INTEGER,
+    subtotal        REAL,
+    tax             REAL,
+    total           REAL,
+    status          TEXT    DEFAULT 'pending'
+                           CHECK(status IN ('pending', 'confirmed', 'flagged', 'rejected', 'deleted', 'duplicate')),
+    flag_reason     TEXT,
+    image_path      TEXT,
+    ocr_confidence  REAL,
+    language        TEXT,
+    created_at      TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (employee_id) REFERENCES employees(id),
+    FOREIGN KEY (project_id)  REFERENCES projects(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_employee ON purchase_orders(employee_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_project  ON purchase_orders(project_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_status   ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_created  ON purchase_orders(created_at);
 
 -- ============================================================
 -- INVENTORY

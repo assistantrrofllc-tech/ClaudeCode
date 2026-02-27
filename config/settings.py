@@ -13,6 +13,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(PROJECT_ROOT / "data" / "crewledger.db"))
 RECEIPT_STORAGE_PATH = os.getenv("RECEIPT_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "receipts"))
 CERT_STORAGE_PATH = os.getenv("CERT_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "certifications"))
+INVOICE_STORAGE_PATH = os.getenv("INVOICE_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "invoices"))
+PACKING_SLIP_STORAGE_PATH = os.getenv("PACKING_SLIP_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "packing-slips"))
 
 # Twilio
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")

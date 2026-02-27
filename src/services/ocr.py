@@ -190,6 +190,133 @@ def _parse_ocr_response(raw_text: str) -> dict | None:
     return data
 
 
+INVOICE_EXTRACTION_PROMPT = """You are a document reading assistant. Extract ALL information from this invoice image and return it as valid JSON.
+
+Return ONLY a JSON object with this exact structure (no markdown, no explanation):
+
+{
+  "vendor_name": "Company name as printed",
+  "vendor_address": "Full address if visible, null otherwise",
+  "invoice_number": "Invoice or reference number",
+  "purchase_date": "YYYY-MM-DD format (invoice date)",
+  "subtotal": 0.00,
+  "tax": 0.00,
+  "total": 0.00,
+  "payment_method": "Payment terms or method if shown",
+  "line_items": [
+    {
+      "item_name": "Item or service description",
+      "quantity": 1,
+      "unit_price": 0.00,
+      "extended_price": 0.00
+    }
+  ]
+}
+
+Rules:
+- All dollar amounts as numbers (no $ sign)
+- If a value is not visible or unreadable, use null
+- Parse the date as YYYY-MM-DD regardless of how it appears
+- Return ONLY valid JSON, no other text"""
+
+
+PACKING_SLIP_EXTRACTION_PROMPT = """You are a document reading assistant. Extract ALL information from this packing slip image and return it as valid JSON.
+
+Return ONLY a JSON object with this exact structure (no markdown, no explanation):
+
+{
+  "vendor_name": "Shipping company or vendor name",
+  "vendor_address": "From address if visible, null otherwise",
+  "po_number": "Purchase order number if visible",
+  "purchase_date": "YYYY-MM-DD format (ship date)",
+  "ship_to_site": "Delivery address or site name",
+  "line_items": [
+    {
+      "item_name": "Item description",
+      "quantity": 1,
+      "unit": "unit of measure (ea, lbs, etc)",
+      "notes": "any notes about the item"
+    }
+  ]
+}
+
+Rules:
+- If a value is not visible or unreadable, use null
+- Parse the date as YYYY-MM-DD regardless of how it appears
+- Return ONLY valid JSON, no other text"""
+
+
+def extract_invoice_data(image_path: str) -> dict | None:
+    """Send an invoice image to GPT-4o-mini Vision and parse the response."""
+    return _extract_document_data(image_path, INVOICE_EXTRACTION_PROMPT)
+
+
+def extract_packing_slip_data(image_path: str) -> dict | None:
+    """Send a packing slip image to GPT-4o-mini Vision and parse the response."""
+    return _extract_document_data(image_path, PACKING_SLIP_EXTRACTION_PROMPT)
+
+
+def _extract_document_data(image_path: str, prompt: str) -> dict | None:
+    """Generic document extraction using a specific prompt."""
+    if not OPENAI_API_KEY:
+        log.error("OPENAI_API_KEY not set — cannot process document")
+        return None
+
+    path = Path(image_path)
+    if not path.exists():
+        log.error("Image not found: %s", image_path)
+        return None
+
+    image_bytes = path.read_bytes()
+    base64_image = base64.b64encode(image_bytes).decode("utf-8")
+
+    suffix = path.suffix.lower()
+    mime_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }
+    mime_type = mime_types.get(suffix, "image/jpeg")
+
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{base64_image}",
+                                "detail": "high",
+                            },
+                        },
+                    ],
+                }
+            ],
+            max_tokens=1500,
+            temperature=0,
+        )
+
+        raw_text = response.choices[0].message.content.strip()
+        data = _parse_ocr_response(raw_text)
+
+        if data:
+            log.info("Document extraction success: %s", data.get("vendor_name", "unknown"))
+
+        return data
+
+    except Exception as e:
+        log.error("OpenAI Vision API call failed for document: %s", e)
+        return None
+
+
 def format_confirmation_message(receipt_data: dict, first_name: str, project_name: str | None) -> str:
     """Format the OCR results into a human-readable SMS confirmation.
 

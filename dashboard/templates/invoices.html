@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}CrewLedger — Invoices{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Invoices</h1>
+</div>
+
+{% if invoices %}
+<div class="card">
+    <div style="overflow-x:auto;">
+    <table class="data-table" id="invoices-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Vendor</th>
+                <th>Invoice #</th>
+                <th>Employee</th>
+                <th>Project</th>
+                <th>Amount</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inv in invoices %}
+            <tr>
+                <td>{{ inv.date or '—' }}</td>
+                <td>{{ inv.vendor_name or 'Unknown' }}</td>
+                <td>{{ inv.invoice_number or '—' }}</td>
+                <td>{{ inv.employee_name or '?' }}</td>
+                <td>{{ inv.project_name or '—' }}</td>
+                <td class="cell-amount">${{ "%.2f"|format(inv.total or 0) }}</td>
+                <td><span class="badge badge--{{ inv.status }}">{{ inv.status }}</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% else %}
+<div class="card empty-state">
+    <h3>No Invoices Yet</h3>
+    <p>Invoices submitted via SMS will appear here once document classification identifies them.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block pre_scripts %}
+<script>var CAN_EDIT = {{ can_edit | tojson }};</script>
+{% endblock %}

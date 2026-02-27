@@ -38,8 +38,15 @@ function openReceiptModal(receiptId) {
                 img.onclick = null;
             }
 
-            // Build details panel
-            var html = '<h3>' + escapeHtml(data.vendor_name || 'Unknown Vendor') + '</h3>';
+            // Build details panel — read-only by default
+            var html = '<div class="modal-detail-header">';
+            html += '<h3>' + escapeHtml(data.vendor_name || 'Unknown Vendor') + '</h3>';
+            if (CAN_EDIT) {
+                html += '<button class="btn btn--icon modal-edit-btn" onclick="enterEditMode(' + receiptId + ')" title="Edit receipt">';
+                html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+                html += '</button>';
+            }
+            html += '</div>';
             html += '<div class="detail-grid">';
             html += detailField('Employee', data.employee_name);
             html += detailField('Date', formatDate(data.purchase_date));
@@ -57,7 +64,7 @@ function openReceiptModal(receiptId) {
             }
             html += '</div>';
 
-            // Notes section
+            // Notes section — always interactive
             html += '<div class="notes-section">';
             html += '<label class="detail-label">Notes</label>';
             html += '<textarea id="modal-notes" class="notes-input" placeholder="Add notes...">' + escapeHtml(data.notes || '') + '</textarea>';
@@ -65,7 +72,7 @@ function openReceiptModal(receiptId) {
             html += '<span id="notes-msg" style="margin-left:8px;font-size:12px;"></span>';
             html += '</div>';
 
-            // Line items — inline editable
+            // Line items — read-only display
             if (data.line_items && data.line_items.length > 0) {
                 html += '<div class="li-inline-editor">';
                 html += '<table class="line-items-table">';
@@ -74,18 +81,12 @@ function openReceiptModal(receiptId) {
                 for (var i = 0; i < data.line_items.length; i++) {
                     var item = data.line_items[i];
                     html += '<tr class="li-detail-row" data-idx="' + i + '">';
-                    html += '<td><input type="text" class="li-d-name" value="' + escapeAttr(item.item_name || '') + '"></td>';
-                    html += '<td><input type="number" class="li-d-qty" value="' + (item.quantity || 1) + '" step="any" min="0"></td>';
-                    html += '<td><input type="number" class="li-d-price" value="' + (item.extended_price || 0) + '" step="0.01"></td>';
+                    html += '<td>' + escapeHtml(item.item_name || '') + '</td>';
+                    html += '<td>' + (item.quantity || 1) + '</td>';
+                    html += '<td>' + formatMoney(item.extended_price) + '</td>';
                     html += '</tr>';
                 }
                 html += '</tbody></table>';
-                if (CAN_EDIT) {
-                    html += '<div class="li-inline-save">';
-                    html += '<button class="btn btn--small btn--primary" onclick="saveInlineLineItems(' + receiptId + ')">Save Items</button>';
-                    html += '<span id="li-save-msg" style="font-size:12px;"></span>';
-                    html += '</div>';
-                }
                 html += '</div>';
             }
 
@@ -97,17 +98,16 @@ function openReceiptModal(receiptId) {
                 setTimeout(function() { toggleEditForm(receiptId); }, 50);
             }
 
-            // Footer with edit/history/delete buttons
+            // Footer with action buttons
             if (footer) {
                 var isHidden = (data.status === 'deleted' || data.status === 'duplicate');
                 var btns = '';
                 if (CAN_EDIT) {
-                    btns = '<button class="btn btn--small btn--secondary" onclick="toggleEditForm(' + receiptId + ')">Edit Receipt</button>';
                     if (isHidden) {
-                        btns += ' <button class="btn btn--small btn--success" onclick="restoreReceipt(' + receiptId + ')">Restore</button>';
+                        btns += '<button class="btn btn--small btn--success" onclick="restoreReceipt(' + receiptId + ')">Restore</button>';
                     } else {
                         if (data.status === 'pending' || data.status === 'flagged') {
-                            btns += ' <button class="btn btn--small btn--success" onclick="confirmReceipt(' + receiptId + ')">Confirm</button>';
+                            btns += '<button class="btn btn--small btn--success" onclick="confirmReceipt(' + receiptId + ')">Confirm</button>';
                         }
                         btns += ' <button class="btn btn--small btn--secondary" onclick="markDuplicate(' + receiptId + ')">Mark Duplicate</button>';
                         btns += ' <button class="btn btn--small btn--danger" onclick="deleteReceipt(' + receiptId + ')">Delete</button>';
@@ -241,6 +241,62 @@ function saveNotes(receiptId) {
     });
 }
 
+
+// ── Edit Mode (pencil icon) ─────────────────────────────
+
+function enterEditMode(receiptId) {
+    var data = _currentReceiptData;
+    if (!data) return;
+
+    // Load dropdowns then render edit mode
+    _loadCategories(function() {
+        _loadEmployees(function() {
+            _loadProjects(function() {
+                _renderEditMode(receiptId, data);
+            });
+        });
+    });
+}
+
+function _renderEditMode(receiptId, data) {
+    var details = document.getElementById('modal-receipt-details');
+    var footer = document.getElementById('modal-receipt-footer');
+
+    var html = '<div class="modal-detail-header">';
+    html += '<h3>Editing Receipt</h3>';
+    html += '</div>';
+    html += '<div class="edit-form" style="margin-top:0;border:none;background:none;padding:0;">';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>Submitter</label>' + _buildEmployeeSelect('edit-employee', data.employee_id) + '</div>';
+    html += '<div class="form-group"><label>Vendor</label><input type="text" id="edit-vendor" value="' + escapeAttr(data.vendor_name || '') + '"></div>';
+    html += '<div class="form-group"><label>Date</label><input type="date" id="edit-date" value="' + (data.purchase_date || '') + '"></div>';
+    html += '</div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>Vendor City</label><input type="text" id="edit-vendor-city" value="' + escapeAttr(data.vendor_city || '') + '"></div>';
+    html += '<div class="form-group"><label>Vendor State</label><input type="text" id="edit-vendor-state" value="' + escapeAttr(data.vendor_state || '') + '" maxlength="2" placeholder="FL"></div>';
+    html += '</div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>Subtotal</label><input type="number" step="0.01" id="edit-subtotal" value="' + (data.subtotal || '') + '"></div>';
+    html += '<div class="form-group"><label>Tax</label><input type="number" step="0.01" id="edit-tax" value="' + (data.tax || '') + '"></div>';
+    html += '<div class="form-group"><label>Total</label><input type="number" step="0.01" id="edit-total" value="' + (data.total || '') + '"></div>';
+    html += '</div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>Payment Method</label><input type="text" id="edit-payment" value="' + escapeAttr(data.payment_method || '') + '"></div>';
+    html += '<div class="form-group"><label>Project</label>' + _buildProjectSelect('edit-project', data.project_id) + '</div>';
+    html += '<div class="form-group"><label>Category</label>' + _buildCategorySelect('edit-category', data.category_id) + '</div>';
+    html += '</div>';
+    html += _buildLineItemEditor(data.line_items || []);
+    html += '</div>';
+
+    details.innerHTML = html;
+
+    // Footer: Save + Cancel
+    if (footer) {
+        footer.innerHTML = '<button class="btn btn--small btn--primary" onclick="saveReceiptEdit(' + receiptId + ')">Save Changes</button>'
+            + ' <button class="btn btn--small btn--secondary" onclick="openReceiptModal(' + receiptId + ')">Cancel</button>'
+            + ' <span id="edit-msg" style="margin-left:8px;font-size:12px;"></span>';
+    }
+}
 
 // ── Receipt Editing ─────────────────────────────────────
 
