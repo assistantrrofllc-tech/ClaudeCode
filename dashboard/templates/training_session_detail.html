@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}CrewCert — Training Session{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ session.title or "Training Session" }}</h1>
+    <div class="header-actions">
+        <a class="btn btn--secondary btn--small" href="/crewcert/training">Back to Training</a>
+    </div>
+</div>
+
+<section class="section">
+    <div class="card">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;">
+            <div><strong>Status:</strong> <span class="badge {% if session.status == 'completed' %}badge--confirmed{% elif session.status == 'declined' %}badge--flagged{% else %}badge--pending{% endif %}">{{ session.status }}</span></div>
+            <div><strong>Provider:</strong> {{ session.trainer_name or "Not selected" }}</div>
+            <div><strong>Date:</strong> {{ session.session_date or "TBD" }}</div>
+            <div><strong>Time:</strong> {{ session.session_time or "Not set" }}</div>
+            <div><strong>Project:</strong> {{ session.project_name or "None" }}</div>
+            <div><strong>Location:</strong> {{ session.location or "Not set" }}</div>
+        </div>
+        <div style="margin-top:10px;"><strong>Certifications:</strong> {{ certs|join(", ") if certs else "None" }}</div>
+        {% if session.notes %}
+        <div style="margin-top:8px;"><strong>Notes:</strong> {{ session.notes }}</div>
+        {% endif %}
+    </div>
+</section>
+
+<section class="section" style="margin-top:20px;">
+    <div class="card">
+        <div class="section-header">
+            <h2>Attendance</h2>
+            {% if can_manage_training and session.status != 'completed' %}
+            <button class="btn btn--primary btn--small" onclick="completeSession()">Mark Completed + Update Certs</button>
+            {% endif %}
+        </div>
+        {% if attendees %}
+        <div style="overflow-x:auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Crew</th>
+                        <th>Attended</th>
+                        <th>Cert Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for attendee in attendees %}
+                    <tr>
+                        <td>{{ attendee.full_name or attendee.first_name }}</td>
+                        <td>{{ attendee.crew or "—" }}</td>
+                        <td>
+                            {% if can_manage_training and session.status != 'completed' %}
+                            <label style="display:flex; align-items:center; gap:6px;">
+                                <input type="checkbox" {% if attendee.attended %}checked{% endif %} onchange="markAttended({{ attendee.employee_id }}, this.checked)">
+                                <span>{{ "Yes" if attendee.attended else "No" }}</span>
+                            </label>
+                            {% else %}
+                            {{ "Yes" if attendee.attended else "No" }}
+                            {% endif %}
+                        </td>
+                        <td>{{ "Yes" if attendee.cert_updated else "No" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p style="color:var(--text-muted);">No attendees assigned.</p>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SESSION_ID = {{ session.id }};
+
+async function markAttended(empId, attended) {
+    await fetch(`/api/training-sessions/${SESSION_ID}/attendees/${empId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({attended}),
+    });
+}
+
+async function completeSession() {
+    const date = prompt('Enter completion date (YYYY-MM-DD):', '{{ session.session_date or "" }}');
+    if (!date) return;
+    const resp = await fetch(`/api/training-sessions/${SESSION_ID}/complete`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_date: date}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+        alert(data.error || 'Failed completing session.');
+        return;
+    }
+    alert(`Completed. Updated: ${data.updated_certifications}, Created: ${data.created_certifications}`);
+    window.location.reload();
+}
+</script>
+{% endblock %}

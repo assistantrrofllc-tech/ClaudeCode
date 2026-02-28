@@ -629,3 +629,111 @@ CREATE TABLE IF NOT EXISTS inventory (
     created_at      TEXT    DEFAULT (datetime('now')),
     UNIQUE(item_name, location, section)
 );
+-- ============================================================
+-- TRAINING PROVIDERS
+-- Trainers used by CrewCert training scheduling and intake.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS training_providers (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_name    TEXT NOT NULL,
+    contact_name    TEXT,
+    contact_email   TEXT NOT NULL,
+    contact_phone   TEXT,
+    website         TEXT,
+    certs_offered   TEXT,
+    logo_path       TEXT,
+    status          TEXT DEFAULT 'active'
+                            CHECK(status IN ('active', 'inactive')),
+    notes           TEXT,
+    created_at      TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_providers_status ON training_providers(status);
+
+INSERT OR IGNORE INTO training_providers (
+    company_name, contact_name, contact_email, certs_offered, status
+) VALUES (
+    'Safety Solutions',
+    'Eddie',
+    'placeholder@example.com',
+    '["OSHA 10", "OSHA 30", "Fall Protection", "CPR/First Aid", "Forklift", "Aerial Work Platform"]',
+    'active'
+);
+
+-- ============================================================
+-- TRAINING REQUESTS (Get Certified intake)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS training_requests (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id     INTEGER NOT NULL,
+    company_name    TEXT,
+    contact_name    TEXT NOT NULL,
+    contact_email   TEXT NOT NULL,
+    contact_phone   TEXT,
+    certs_requested TEXT NOT NULL,
+    num_employees   INTEGER,
+    timeframe       TEXT,
+    location_pref   TEXT,
+    notes           TEXT,
+    status          TEXT DEFAULT 'submitted'
+                            CHECK(status IN ('draft', 'submitted', 'confirmed', 'completed', 'cancelled')),
+    email_sent_at   TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (provider_id) REFERENCES training_providers(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_requests_provider ON training_requests(provider_id);
+CREATE INDEX IF NOT EXISTS idx_training_requests_status   ON training_requests(status);
+
+-- ============================================================
+-- TRAINING SESSIONS (internal scheduling)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS training_sessions (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    title               TEXT,
+    trainer_id          INTEGER,
+    session_date        TEXT,
+    session_time        TEXT,
+    preferred_date_start TEXT,
+    preferred_date_end  TEXT,
+    location            TEXT,
+    project_id          INTEGER,
+    request_id          INTEGER,
+    num_attendees       INTEGER,
+    status              TEXT DEFAULT 'requested'
+                                CHECK(status IN ('requested', 'confirmed', 'scheduled', 'completed', 'declined')),
+    request_email_sent_at TEXT,
+    notes               TEXT,
+    created_at          TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (trainer_id) REFERENCES training_providers(id),
+    FOREIGN KEY (project_id) REFERENCES projects(id),
+    FOREIGN KEY (request_id) REFERENCES training_requests(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_sessions_trainer ON training_sessions(trainer_id);
+CREATE INDEX IF NOT EXISTS idx_training_sessions_status  ON training_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_training_sessions_date    ON training_sessions(session_date);
+
+CREATE TABLE IF NOT EXISTS training_session_certs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id      INTEGER NOT NULL,
+    cert_type       TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES training_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_session_certs_session ON training_session_certs(session_id);
+
+CREATE TABLE IF NOT EXISTS training_session_attendees (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id      INTEGER NOT NULL,
+    employee_id     INTEGER NOT NULL,
+    attended        INTEGER DEFAULT 0,
+    cert_updated    INTEGER DEFAULT 0,
+    notes           TEXT,
+    FOREIGN KEY (session_id) REFERENCES training_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (employee_id) REFERENCES employees(id),
+    UNIQUE(session_id, employee_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_attendees_session  ON training_session_attendees(session_id);
+CREATE INDEX IF NOT EXISTS idx_training_attendees_employee ON training_session_attendees(employee_id);

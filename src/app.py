@@ -31,6 +31,7 @@ from src.api.admin_tools import admin_bp
 from src.api.auth import auth_bp, init_oauth
 from src.api.user_management import user_mgmt_bp
 from src.api.fleet import fleet_bp
+from src.api.training import training_bp
 
 log = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ def create_app() -> Flask:
     app.register_blueprint(admin_bp)
     app.register_blueprint(user_mgmt_bp)
     app.register_blueprint(fleet_bp)
+    app.register_blueprint(training_bp)
 
     @app.route("/health")
     def health():

@@ -12,7 +12,7 @@ APP_DIR="/opt/crewledger"
 BACKUP_DIR="/opt/crewledger/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/crewledger_${TIMESTAMP}.tar.gz"
-KEEP_DAYS=30
+KEEP_DAYS=14
 
 mkdir -p "${BACKUP_DIR}"
 

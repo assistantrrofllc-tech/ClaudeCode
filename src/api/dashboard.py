@@ -47,6 +47,7 @@ MODULE_NAVS = {
     "crewcert": [
         {"id": "dashboard", "label": "Dashboard", "href": "/crewcert"},
         {"id": "employees", "label": "Employees", "href": "/crew"},
+        {"id": "training", "label": "Training", "href": "/crewcert/training"},
     ],
     "crewasset": [
         {"id": "vehicles", "label": "Vehicles", "href": "/fleet/"},
@@ -928,10 +929,36 @@ def crew_detail_page(employee_id):
             "SELECT * FROM certification_types WHERE is_active = 1 ORDER BY sort_order"
         ).fetchall()
 
+        # Pre-load certs so template can render without JS fetch
+        cert_rows = db.execute("""
+            SELECT c.*, ct.name as cert_type_name, ct.slug as cert_type_slug
+            FROM certifications c
+            JOIN certification_types ct ON c.cert_type_id = ct.id
+            WHERE c.employee_id = ? AND c.is_active = 1
+            ORDER BY ct.sort_order
+        """, (employee_id,)).fetchall()
+        certs = []
+        for r in cert_rows:
+            d = dict(r)
+            d["status"] = calculate_cert_status(r["expires_at"])
+            certs.append(d)
+
+        # Pre-load scan log
+        scan_rows = db.execute("""
+            SELECT scanned_at, ip_address
+            FROM qr_scan_log
+            WHERE employee_id = ?
+            ORDER BY scanned_at DESC
+            LIMIT 20
+        """, (employee_id,)).fetchall()
+        scans = [dict(s) for s in scan_rows]
+
         return _render_module(
             "crew_detail.html", "crewcert", "employees",
             employee=dict(emp),
             cert_types=[dict(ct) for ct in cert_types],
+            certs_json=certs,
+            scans_json=scans,
         )
     finally:
         db.close()

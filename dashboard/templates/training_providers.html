@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}CrewCert — Training Providers{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Training Providers</h1>
+    <div class="header-actions">
+        <a class="btn btn--secondary btn--small" href="/crewcert/training">Back to Training</a>
+    </div>
+</div>
+
+<section class="section">
+    <div class="card">
+        <h2 style="margin-bottom:10px;">Add Provider</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Company Name</label>
+                <input id="provider-company" type="text">
+            </div>
+            <div class="form-group">
+                <label>Contact Name</label>
+                <input id="provider-contact-name" type="text">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Contact Email</label>
+                <input id="provider-contact-email" type="email">
+            </div>
+            <div class="form-group">
+                <label>Contact Phone</label>
+                <input id="provider-contact-phone" type="text">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Certs Offered (comma separated)</label>
+            <input id="provider-certs" type="text" placeholder="OSHA 10, OSHA 30, Fall Protection">
+        </div>
+        <div class="form-group">
+            <label>Notes</label>
+            <input id="provider-notes" type="text">
+        </div>
+        <div id="provider-error" class="error-msg" style="display:none;"></div>
+        <button class="btn btn--primary btn--small" type="button" onclick="createProvider()">Add Provider</button>
+    </div>
+</section>
+
+<section class="section" style="margin-top:20px;">
+    <div class="card">
+        <h2 style="margin-bottom:10px;">Provider List</h2>
+        <div id="providers-loading" class="loading">Loading providers...</div>
+        <div id="providers-empty" style="display:none; color:var(--text-muted);">No providers available.</div>
+        <div id="providers-list"></div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let providerRows = [];
+
+document.addEventListener('DOMContentLoaded', loadProviders);
+
+function escHtml(value) {
+    if (!value) return '';
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+}
+
+function certsFromInput(value) {
+    return value.split(',').map(v => v.trim()).filter(Boolean);
+}
+
+async function loadProviders() {
+    const resp = await fetch('/api/training-providers?include_inactive=1');
+    providerRows = await resp.json();
+    const loading = document.getElementById('providers-loading');
+    const empty = document.getElementById('providers-empty');
+    const list = document.getElementById('providers-list');
+    loading.style.display = 'none';
+    if (!providerRows.length) {
+        empty.style.display = 'block';
+        list.innerHTML = '';
+        return;
+    }
+    list.innerHTML = providerRows.map(p => {
+        const badge = p.status === 'active' ? 'badge--confirmed' : 'badge--pending';
+        return `<div class="receipt-row">
+            <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                <div style="flex:1;">
+                    <div style="font-weight:600;">${escHtml(p.company_name)}</div>
+                    <div style="font-size:13px; color:var(--text-muted);">${escHtml(p.contact_name || '')} • ${escHtml(p.contact_email || '')}</div>
+                    <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">${escHtml((p.certs_offered || []).join(', '))}</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="badge ${badge}">${escHtml(p.status)}</span>
+                    ${p.status === 'active'
+                        ? `<button class="btn btn--secondary btn--small" style="font-size:11px;" onclick="deactivateProvider(${p.id})">Deactivate</button>`
+                        : ''}
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function createProvider() {
+    const error = document.getElementById('provider-error');
+    error.style.display = 'none';
+    const payload = {
+        company_name: document.getElementById('provider-company').value.trim(),
+        contact_name: document.getElementById('provider-contact-name').value.trim(),
+        contact_email: document.getElementById('provider-contact-email').value.trim(),
+        contact_phone: document.getElementById('provider-contact-phone').value.trim(),
+        certs_offered: certsFromInput(document.getElementById('provider-certs').value),
+        notes: document.getElementById('provider-notes').value.trim(),
+    };
+    try {
+        const resp = await fetch('/api/training-providers', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            throw new Error(data.error || 'Failed creating provider');
+        }
+        document.getElementById('provider-company').value = '';
+        document.getElementById('provider-contact-name').value = '';
+        document.getElementById('provider-contact-email').value = '';
+        document.getElementById('provider-contact-phone').value = '';
+        document.getElementById('provider-certs').value = '';
+        document.getElementById('provider-notes').value = '';
+        await loadProviders();
+    } catch (e) {
+        error.textContent = e.message || 'Failed creating provider.';
+        error.style.display = 'block';
+    }
+}
+
+async function deactivateProvider(providerId) {
+    if (!confirm('Deactivate this provider?')) return;
+    const resp = await fetch(`/api/training-providers/${providerId}`, {method: 'DELETE'});
+    if (resp.ok) {
+        await loadProviders();
+    }
+}
+</script>
+{% endblock %}

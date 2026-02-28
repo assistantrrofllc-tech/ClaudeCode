@@ -313,3 +313,44 @@ def _format_date_short(date_str: str) -> str:
         return f"{d.strftime('%a')} {d.month}/{d.day}"
     except (ValueError, TypeError):
         return date_str or "—"
+
+
+def send_custom_email(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    plain_body: str,
+    reply_to: str | None = None,
+    cc_email: str | None = None,
+) -> bool:
+    """Send a generic email via SMTP with optional reply-to and CC."""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        log.error("SMTP credentials not configured — cannot send email")
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = SMTP_USER
+    msg["To"] = to_email
+    if cc_email:
+        msg["Cc"] = cc_email
+    if reply_to:
+        msg["Reply-To"] = reply_to
+
+    msg.attach(MIMEText(plain_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    recipients = [to_email]
+    if cc_email:
+        recipients.append(cc_email)
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_USER, recipients, msg.as_string())
+        log.info("Custom email sent to %s", recipients)
+        return True
+    except Exception as e:
+        log.error("Failed to send custom email to %s: %s", recipients, e)
+        return False
