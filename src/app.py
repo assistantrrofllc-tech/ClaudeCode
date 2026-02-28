@@ -51,8 +51,9 @@ def create_app() -> Flask:
     # Initialize OAuth
     init_oauth(app)
 
-    # Cache-busting version for static files (changes on each deploy)
-    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", "20")
+    # Cache-busting version for static files (changes on each restart)
+    import time
+    app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", str(int(time.time())))
 
     # CrewOS module definitions — available to all templates
     CREWOS_MODULES = [
