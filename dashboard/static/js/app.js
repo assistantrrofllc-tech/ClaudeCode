@@ -659,7 +659,11 @@ function closeFullscreenViewer(e) {
     // Only close if clicking backdrop or close button, not the image itself
     if (e && e.target && e.target.id === 'fullscreen-viewer-img') return;
     viewer.classList.remove('fullscreen-viewer--active');
-    // Don't restore body overflow — receipt modal is still open
+    // Restore body overflow if receipt modal is NOT open
+    var receiptModal = document.getElementById('receipt-modal');
+    if (!receiptModal || receiptModal.style.display === 'none') {
+        document.body.style.overflow = '';
+    }
 }
 
 // Swipe down to close fullscreen viewer

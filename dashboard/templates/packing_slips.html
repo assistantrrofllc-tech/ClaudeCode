@@ -23,7 +23,7 @@
         </thead>
         <tbody>
             {% for ps in packing_slips %}
-            <tr>
+            <tr{% if ps.image_path %} onclick="viewDocImage('{{ ps.image_path.split('/')[-1] }}')" style="cursor:pointer;"{% endif %}>
                 <td>{{ ps.date or '—' }}</td>
                 <td>{{ ps.vendor_name or 'Unknown' }}</td>
                 <td>{{ ps.po_number or '—' }}</td>
@@ -47,4 +47,13 @@
 
 {% block pre_scripts %}
 <script>var CAN_EDIT = {{ can_edit | tojson }};</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function viewDocImage(filename) {
+    var url = '/receipts/image/' + encodeURIComponent(filename);
+    openFullscreenViewer(url);
+}
+</script>
 {% endblock %}

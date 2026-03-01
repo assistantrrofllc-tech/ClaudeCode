@@ -23,7 +23,7 @@
         </thead>
         <tbody>
             {% for inv in invoices %}
-            <tr>
+            <tr{% if inv.image_path %} onclick="viewDocImage('{{ inv.image_path.split('/')[-1] }}')" style="cursor:pointer;"{% endif %}>
                 <td>{{ inv.date or '—' }}</td>
                 <td>{{ inv.vendor_name or 'Unknown' }}</td>
                 <td>{{ inv.invoice_number or '—' }}</td>
@@ -47,4 +47,13 @@
 
 {% block pre_scripts %}
 <script>var CAN_EDIT = {{ can_edit | tojson }};</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function viewDocImage(filename) {
+    var url = '/receipts/image/' + encodeURIComponent(filename);
+    openFullscreenViewer(url);
+}
+</script>
 {% endblock %}
