@@ -1348,6 +1348,7 @@ def api_crew_employees():
         ).fetchall()
 
         # Employee role: return only own record
+        show_archived = request.args.get("show_archived") == "1"
         if is_own_data_only():
             own_id = get_current_employee_id()
             if own_id:
@@ -1359,11 +1360,18 @@ def api_crew_employees():
             else:
                 employees = []
         else:
-            employees = db.execute("""
-                SELECT id, employee_uuid, first_name, full_name, phone_number,
-                       email, role, crew, is_active, nickname, is_driver
-                FROM employees ORDER BY first_name
-            """).fetchall()
+            if show_archived:
+                employees = db.execute("""
+                    SELECT id, employee_uuid, first_name, full_name, phone_number,
+                           email, role, crew, is_active, nickname, is_driver
+                    FROM employees ORDER BY is_active DESC, first_name
+                """).fetchall()
+            else:
+                employees = db.execute("""
+                    SELECT id, employee_uuid, first_name, full_name, phone_number,
+                           email, role, crew, is_active, nickname, is_driver
+                    FROM employees WHERE is_active = 1 ORDER BY first_name
+                """).fetchall()
 
         result = []
         for emp in employees:

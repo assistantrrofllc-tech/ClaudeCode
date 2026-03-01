@@ -63,6 +63,7 @@
         <button class="filter-btn" data-filter="active" onclick="setCrewFilter('active', this)">Active</button>
         <button class="filter-btn" data-filter="expired" onclick="setCrewFilter('expired', this)">Has Expired</button>
         <button class="filter-btn" data-filter="expiring" onclick="setCrewFilter('expiring', this)">Expiring Soon</button>
+        <button class="filter-btn" data-filter="archived" onclick="toggleArchived(this)" style="margin-left:auto;">Show Archived</button>
     </div>
 </div>
 
@@ -88,9 +89,12 @@ let currentFilter = 'all';
 
 document.addEventListener('DOMContentLoaded', loadCrewList);
 
+let showingArchived = false;
+
 async function loadCrewList() {
     try {
-        const resp = await fetch('/api/crew/employees');
+        const url = showingArchived ? '/api/crew/employees?show_archived=1' : '/api/crew/employees';
+        const resp = await fetch(url);
         crewData = await resp.json();
         renderCrewList(crewData);
     } catch (err) {
@@ -168,8 +172,8 @@ function renderEmployeeCard(emp) {
     const phone = emp.phone_number || '';
     const email = emp.email || '';
     const crewRole = [emp.crew, emp.role].filter(Boolean).join(' \u00b7 ');
-    const statusClass = emp.is_active ? 'badge--confirmed' : 'badge--rejected';
-    const statusLabel = emp.is_active ? 'Active' : 'Inactive';
+    const statusClass = emp.is_active ? 'badge--confirmed' : 'badge--archived';
+    const statusLabel = emp.is_active ? 'Active' : 'Archived';
     const initials = getInitials(name);
     const isPlaceholder = phone.startsWith('placeholder') || phone.startsWith('+1placeholder');
 
@@ -193,8 +197,9 @@ function renderEmployeeCard(emp) {
         });
     }
 
+    const archivedStyle = emp.is_active ? '' : 'opacity:0.5;';
     return `
-    <div class="crew-card" onclick="window.location='/crew/${emp.id}'"
+    <div class="crew-card" onclick="window.location='/crew/${emp.id}'" style="${archivedStyle}"
          data-name="${displayName.toLowerCase()}"
          data-crew="${(emp.crew || '').toLowerCase()}"
          data-active="${emp.is_active ? '1' : '0'}"
@@ -297,6 +302,13 @@ function filterCrewList() {
         // Hide entire group if no cards visible
         group.style.display = anyVisible ? '' : 'none';
     });
+}
+
+function toggleArchived(btn) {
+    showingArchived = !showingArchived;
+    btn.classList.toggle('active', showingArchived);
+    btn.textContent = showingArchived ? 'Hide Archived' : 'Show Archived';
+    loadCrewList();
 }
 
 function setCrewFilter(filter, btn) {
