@@ -111,14 +111,14 @@ def home():
 
         row = db.execute(
             f"""SELECT COUNT(*) as cnt FROM receipts
-               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
+               WHERE COALESCE(purchase_date, date(created_at)) >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
             emp_params_week,
         ).fetchone()
         receipts_this_week = row["cnt"] if row else 0
 
         row = db.execute(
             f"""SELECT COALESCE(SUM(total), 0) as total FROM receipts
-               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
+               WHERE COALESCE(purchase_date, date(created_at)) >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
             emp_params_month,
         ).fetchone()
         spend_this_month = row["total"] if row else 0
@@ -147,7 +147,7 @@ def home():
         # Receipt count this month (for module_stats)
         row = db.execute(
             f"""SELECT COUNT(*) as cnt FROM receipts
-               WHERE created_at >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
+               WHERE COALESCE(purchase_date, date(created_at)) >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
             emp_params_month,
         ).fetchone()
         receipts_this_month = row["cnt"] if row else 0
@@ -2452,8 +2452,8 @@ def _get_dashboard_stats(db) -> dict:
     """Summary stats for the dashboard home screen."""
     row = db.execute("""
         SELECT
-            COALESCE(SUM(CASE WHEN created_at >= date('now', 'weekday 1', '-7 days') THEN total ELSE 0 END), 0) as week_spend,
-            COALESCE(SUM(CASE WHEN created_at >= date('now', 'start of month') THEN total ELSE 0 END), 0) as month_spend,
+            COALESCE(SUM(CASE WHEN COALESCE(purchase_date, date(created_at)) >= date('now', 'weekday 1', '-7 days') THEN total ELSE 0 END), 0) as week_spend,
+            COALESCE(SUM(CASE WHEN COALESCE(purchase_date, date(created_at)) >= date('now', 'start of month') THEN total ELSE 0 END), 0) as month_spend,
             COUNT(*) as total_receipts,
             COALESCE(SUM(CASE WHEN status = 'flagged' THEN 1 ELSE 0 END), 0) as flagged_count,
             COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending_count,
