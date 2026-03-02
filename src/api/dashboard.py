@@ -98,39 +98,26 @@ def home():
         week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
         month_start = now.strftime("%Y-%m-01")
 
-        # Scope stats by employee_id for employee role
-        emp_filter = ""
-        emp_params_week = [week_start]
-        emp_params_month = [month_start]
-        if is_own_data_only():
-            own_id = get_current_employee_id()
-            if own_id:
-                emp_filter = " AND employee_id = ?"
-                emp_params_week.append(own_id)
-                emp_params_month.append(own_id)
-
+        # All users see all receipts for now (CrewLedger open to everyone)
         row = db.execute(
-            f"""SELECT COUNT(*) as cnt FROM receipts
-               WHERE COALESCE(purchase_date, date(created_at)) >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
-            emp_params_week,
+            """SELECT COUNT(*) as cnt FROM receipts
+               WHERE COALESCE(purchase_date, date(created_at)) >= ? AND status NOT IN ('deleted','duplicate')""",
+            [week_start],
         ).fetchone()
         receipts_this_week = row["cnt"] if row else 0
 
         row = db.execute(
-            f"""SELECT COALESCE(SUM(total), 0) as total FROM receipts
-               WHERE COALESCE(purchase_date, date(created_at)) >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
-            emp_params_month,
+            """SELECT COALESCE(SUM(total), 0) as total FROM receipts
+               WHERE COALESCE(purchase_date, date(created_at)) >= ? AND status NOT IN ('deleted','duplicate')""",
+            [month_start],
         ).fetchone()
         spend_this_month = row["total"] if row else 0
 
         # CrewCert stats
-        if is_own_data_only():
-            employee_count = 1
-        else:
-            row = db.execute(
-                "SELECT COUNT(*) as cnt FROM employees WHERE is_active = 1"
-            ).fetchone()
-            employee_count = row["cnt"] if row else 0
+        row = db.execute(
+            "SELECT COUNT(*) as cnt FROM employees WHERE is_active = 1"
+        ).fetchone()
+        employee_count = row["cnt"] if row else 0
 
         row = db.execute(
             """SELECT COUNT(*) as cnt FROM certifications c
@@ -146,9 +133,9 @@ def home():
 
         # Receipt count this month (for module_stats)
         row = db.execute(
-            f"""SELECT COUNT(*) as cnt FROM receipts
-               WHERE COALESCE(purchase_date, date(created_at)) >= ? AND status NOT IN ('deleted','duplicate'){emp_filter}""",
-            emp_params_month,
+            """SELECT COUNT(*) as cnt FROM receipts
+               WHERE COALESCE(purchase_date, date(created_at)) >= ? AND status NOT IN ('deleted','duplicate')""",
+            [month_start],
         ).fetchone()
         receipts_this_month = row["cnt"] if row else 0
 
@@ -300,15 +287,7 @@ def api_receipts():
     """
     db = get_db()
     try:
-        # Employee role: force filter to own receipts only
         args = request.args
-        if is_own_data_only():
-            emp_id = get_current_employee_id()
-            if emp_id:
-                args = args.copy()
-                args["employee"] = str(emp_id)
-            else:
-                return jsonify([])
         receipts = _query_receipts(db, args)
         return jsonify(receipts)
     finally:
