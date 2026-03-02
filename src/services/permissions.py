@@ -64,7 +64,7 @@ DEFAULT_ACCESS = {
     },
     "employee": {
         "crewledger": "view",
-        "crewcert": "view",
+        "crewcert": "none",
         "crewschedule": "none",
         "crewasset": "none",
         "crewinventory": "none",

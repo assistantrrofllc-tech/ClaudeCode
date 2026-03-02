@@ -62,7 +62,8 @@
         </div>
     </a>
 
-    <!-- CrewSchedule (coming soon) -->
+    {% if user_role == 'super_admin' %}
+    <!-- CrewSchedule (coming soon) — dev only -->
     <div class="home-card home-card--disabled">
         <div class="home-card__header">
             <div class="home-card__icon">
@@ -79,7 +80,7 @@
         <p class="home-card__desc">Crew scheduling &amp; dispatch</p>
     </div>
 
-    <!-- CrewSafe (coming soon) -->
+    <!-- CrewSafe (coming soon) — dev only -->
     <div class="home-card home-card--disabled">
         <div class="home-card__header">
             <div class="home-card__icon">
@@ -95,7 +96,7 @@
         <p class="home-card__desc">JHAs, daily logs &amp; compliance</p>
     </div>
 
-    <!-- CrewAsset -->
+    <!-- CrewAsset — dev only -->
     <a href="/fleet/" class="home-card home-card--live">
         <div class="home-card__header">
             <div class="home-card__icon">
@@ -109,5 +110,6 @@
         <h3 class="home-card__title">CrewAsset</h3>
         <p class="home-card__desc">Equipment &amp; vehicle tracking</p>
     </a>
+    {% endif %}
 </div>
 {% endblock %}

@@ -146,9 +146,9 @@ def test_manager_no_settings():
 
 
 def test_employee_limited_access():
-    """employee has view access to crewledger/crewcert only."""
+    """employee has view access to crewledger only; no crewcert access."""
     assert DEFAULT_ACCESS["employee"]["crewledger"] == "view"
-    assert DEFAULT_ACCESS["employee"]["crewcert"] == "view"
+    assert DEFAULT_ACCESS["employee"]["crewcert"] == "none"
     assert DEFAULT_ACCESS["employee"]["settings"] == "none"
     assert DEFAULT_ACCESS["employee"]["user_management"] == "none"
 

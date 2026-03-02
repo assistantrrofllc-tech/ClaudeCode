@@ -57,12 +57,13 @@ def create_app() -> Flask:
     app.config["CACHE_VERSION"] = os.environ.get("CACHE_VERSION", str(int(time.time())))
 
     # CrewOS module definitions — available to all templates
+    # dev_only=True means only super_admin (rob.rrofllc@gmail.com) can see it
     CREWOS_MODULES = [
-        {"id": "crewledger", "label": "CrewLedger", "href": "/ledger", "enabled": True},
-        {"id": "crewcert", "label": "CrewCert", "href": "/crewcert", "enabled": True},
-        {"id": "crewschedule", "label": "CrewSchedule", "href": "#", "enabled": False},
-        {"id": "crewasset", "label": "CrewAsset", "href": "/fleet/", "enabled": True},
-        {"id": "crewinventory", "label": "CrewInventory", "href": "#", "enabled": False},
+        {"id": "crewledger", "label": "CrewLedger", "href": "/ledger", "enabled": True, "dev_only": False},
+        {"id": "crewcert", "label": "CrewCert", "href": "/crewcert", "enabled": True, "dev_only": False},
+        {"id": "crewschedule", "label": "CrewSchedule", "href": "#", "enabled": False, "dev_only": True},
+        {"id": "crewasset", "label": "CrewAsset", "href": "/fleet/", "enabled": True, "dev_only": True},
+        {"id": "crewinventory", "label": "CrewInventory", "href": "#", "enabled": False, "dev_only": True},
     ]
 
     @app.context_processor
@@ -72,12 +73,12 @@ def create_app() -> Flask:
         role_level = {"super_admin": 4, "company_admin": 3, "manager": 2, "employee": 1}.get(user_role, 1)
 
         # Filter modules — hide modules the user has no access to
-        # super_admin always sees everything
+        # super_admin always sees everything; dev_only modules hidden from all others
         if user and user_role != "super_admin":
             from src.services.permissions import check_permission
             visible_modules = [
                 m for m in CREWOS_MODULES
-                if not m["enabled"] or check_permission(None, m["id"], "view")
+                if not m.get("dev_only") and (not m["enabled"] or check_permission(None, m["id"], "view"))
             ]
         else:
             visible_modules = CREWOS_MODULES

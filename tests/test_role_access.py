@@ -242,20 +242,16 @@ def test_employee_can_view_home():
     assert resp.status_code == 200
 
 
-def test_employee_can_view_own_profile():
-    """employee can view their own crew detail page."""
+def test_employee_cannot_access_crew_pages():
+    """employee is redirected from all crew pages (no crewcert access)."""
     setup_test_db()
     client = make_client("employee", employee_id=1)
+    # Own profile — redirected (no crewcert module access)
     resp = client.get("/crew/1")
-    assert resp.status_code == 200
-
-
-def test_employee_cannot_view_other_profile():
-    """employee gets 403 viewing another employee's profile."""
-    setup_test_db()
-    client = make_client("employee", employee_id=1)
+    assert resp.status_code == 302
+    # Other profile — also redirected
     resp = client.get("/crew/2")
-    assert resp.status_code == 403
+    assert resp.status_code == 302
 
 
 def test_employee_cannot_create_receipt():
