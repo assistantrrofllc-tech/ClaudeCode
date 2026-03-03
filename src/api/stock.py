@@ -265,7 +265,7 @@ def api_dashboard():
 
         # Projects with inventory for dashboard tabs
         projects_with_inv = db.execute("""
-            SELECT p.id, p.name, p.project_code,
+            SELECT p.id, p.name,
                    COALESCE(SUM(pi.quantity), 0) AS total_qty
             FROM projects p
             JOIN project_inventory pi ON pi.project_id = p.id
@@ -999,7 +999,7 @@ def api_projects():
     db = get_db()
     try:
         rows = db.execute(
-            "SELECT id, name, project_code, status FROM projects WHERE status = 'active' ORDER BY name"
+            "SELECT id, name, status FROM projects WHERE status = 'active' ORDER BY name"
         ).fetchall()
         return jsonify({"projects": [dict(r) for r in rows]})
     finally:
@@ -1267,7 +1267,7 @@ def api_projects_with_inventory():
     db = get_db()
     try:
         rows = db.execute(
-            """SELECT p.id, p.name, p.project_code, p.status,
+            """SELECT p.id, p.name, p.status,
                       COALESCE(SUM(pi.quantity), 0) AS total_items
                FROM projects p
                JOIN project_inventory pi ON pi.project_id = p.id
