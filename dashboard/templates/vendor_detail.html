@@ -1,0 +1,537 @@
+{% extends "base.html" %}
+{% block title %}CrewOS — {{ vendor.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/vendors" style="font-size:13px; color:var(--text-muted); text-decoration:none;">&larr; Back to Vendors</a>
+    <div style="display:flex; align-items:center; gap:16px; margin-top:8px;">
+        <div id="vendor-image-wrap" style="display:none;">
+            <img id="vendor-image" src="" alt="" style="width:64px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--border, #e5e7eb);">
+        </div>
+        <div style="flex:1;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <h1 style="margin:0;" id="vendor-title">{{ vendor.name }}</h1>
+                <span class="badge-type" id="vendor-type-badge"></span>
+                <span class="badge-status" id="vendor-status-badge"></span>
+            </div>
+            <div style="font-size:13px; color:var(--text-muted); margin-top:4px;" id="vendor-subtitle"></div>
+        </div>
+        {% if can_edit %}
+        <button class="btn btn--primary btn--small" onclick="openEditModal()">Edit</button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="stats-row stats-row--4col">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-spend">--</div>
+        <div class="stat-label">Total Spend</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-month">--</div>
+        <div class="stat-label">This Month</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-items">--</div>
+        <div class="stat-label">Items Supplied</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-receipts">--</div>
+        <div class="stat-label">Receipts</div>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="crew-filter-pills" id="detail-tabs" style="margin:20px 0 16px;">
+    <button class="filter-btn active" onclick="showTab('overview', this)">Overview</button>
+    <button class="filter-btn" onclick="showTab('receipts', this)">Receipts</button>
+    <button class="filter-btn" onclick="showTab('items', this)">Items</button>
+    <button class="filter-btn" onclick="showTab('orders', this)">Orders</button>
+    <button class="filter-btn" onclick="showTab('contacts', this)">Contacts</button>
+</div>
+
+<!-- Tab: Overview -->
+<div id="tab-overview" class="tab-panel">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+        <div class="card" style="padding:20px;">
+            <h3 style="margin:0 0 12px; font-size:14px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Company Info</h3>
+            <div id="info-address" style="font-size:14px; line-height:1.6;"></div>
+        </div>
+        <div class="card" style="padding:20px;">
+            <h3 style="margin:0 0 12px; font-size:14px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Account Details</h3>
+            <div id="info-account" style="font-size:14px; line-height:1.6;"></div>
+        </div>
+    </div>
+    <div style="margin-top:16px;">
+        <h3 style="font-size:14px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;">Primary Contact</h3>
+        <div id="info-contact" class="card" style="padding:16px; font-size:14px;"></div>
+    </div>
+    <div id="aliases-section" style="margin-top:16px; display:none;">
+        <h3 style="font-size:14px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;">Known Aliases (Receipt Matching)</h3>
+        <div id="aliases-list" style="font-size:13px;"></div>
+    </div>
+</div>
+
+<!-- Tab: Receipts -->
+<div id="tab-receipts" class="tab-panel" style="display:none;">
+    <div id="receipts-loading" class="loading">Loading receipts...</div>
+    <div id="receipts-empty" style="display:none; color:var(--text-muted); font-size:14px; padding:24px 0;">No receipts matched to this vendor.</div>
+    <div id="receipts-wrap" style="display:none; overflow-x:auto;">
+        <table class="data-table">
+            <thead><tr><th>Date</th><th>Employee</th><th>Project</th><th style="text-align:right;">Amount</th><th>Status</th></tr></thead>
+            <tbody id="receipts-tbody"></tbody>
+            <tfoot><tr><th colspan="3" style="text-align:right; font-weight:700;">Total</th><th style="text-align:right; font-weight:700;" id="receipts-total"></th><th></th></tr></tfoot>
+        </table>
+    </div>
+</div>
+
+<!-- Tab: Items -->
+<div id="tab-items" class="tab-panel" style="display:none;">
+    <div id="items-loading" class="loading">Loading items...</div>
+    <div id="items-empty" style="display:none; color:var(--text-muted); font-size:14px; padding:24px 0;">No inventory items from this vendor.</div>
+    <div id="items-wrap" style="display:none; overflow-x:auto;">
+        <table class="data-table">
+            <thead><tr><th>Item</th><th>Category</th><th>Unit</th><th style="text-align:right;">Qty in Shops</th><th style="text-align:right;">Reorder Pt</th></tr></thead>
+            <tbody id="items-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Tab: Orders -->
+<div id="tab-orders" class="tab-panel" style="display:none;">
+    <div id="orders-loading" class="loading">Loading orders...</div>
+    <div id="orders-empty" style="display:none; color:var(--text-muted); font-size:14px; padding:24px 0;">No reorder history for this vendor.</div>
+    <div id="orders-wrap" style="display:none; overflow-x:auto;">
+        <table class="data-table">
+            <thead><tr><th>Date</th><th>Status</th><th>Items</th></tr></thead>
+            <tbody id="orders-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Tab: Contacts -->
+<div id="tab-contacts" class="tab-panel" style="display:none;">
+    {% if can_edit %}
+    <div style="margin-bottom:12px;">
+        <button class="btn btn--secondary btn--small" onclick="openContactModal()">Add Contact</button>
+    </div>
+    {% endif %}
+    <div id="contacts-empty" style="display:none; color:var(--text-muted); font-size:14px; padding:24px 0;">No contacts added.</div>
+    <div id="contacts-list"></div>
+</div>
+
+<!-- Edit Vendor Modal -->
+{% if can_edit %}
+<div id="edit-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeEditModal()"></div>
+    <div class="modal-content" style="max-width:600px;">
+        <button class="modal-close" onclick="closeEditModal()">&times;</button>
+        <div class="modal-body" style="flex-direction:column; padding:24px;">
+            <h3 style="margin:0 0 20px; font-size:18px; font-weight:700;">Edit Vendor</h3>
+            <div class="form-group"><label>Company Name</label><input type="text" id="ed-name"></div>
+            <div class="form-row">
+                <div class="form-group"><label>Type</label>
+                    <select id="ed-type"><option value="supplier">Supplier</option><option value="rental">Rental</option><option value="subcontractor">Subcontractor</option><option value="training">Training</option><option value="service">Service</option></select>
+                </div>
+                <div class="form-group"><label>Account #</label><input type="text" id="ed-account"></div>
+            </div>
+            <div class="form-group"><label>Address</label><input type="text" id="ed-address"></div>
+            <div class="form-row form-row--3col">
+                <div class="form-group"><label>City</label><input type="text" id="ed-city"></div>
+                <div class="form-group"><label>State</label><input type="text" id="ed-state" maxlength="2"></div>
+                <div class="form-group"><label>ZIP</label><input type="text" id="ed-zip"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Phone</label><input type="text" id="ed-phone"></div>
+                <div class="form-group"><label>Website</label><input type="text" id="ed-website"></div>
+            </div>
+            <div class="form-group"><label>Payment Terms</label>
+                <select id="ed-terms"><option value="">--</option><option value="COD">COD</option><option value="Net 15">Net 15</option><option value="Net 30">Net 30</option><option value="Net 60">Net 60</option><option value="Credit Card">Credit Card</option><option value="Prepaid">Prepaid</option></select>
+            </div>
+            <div class="form-group"><label>Notes</label><input type="text" id="ed-notes"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn--secondary" onclick="closeEditModal()">Cancel</button>
+            <button class="btn btn--primary" id="btn-save-edit" onclick="saveVendorEdit()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Contact Modal -->
+<div id="contact-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeContactModal()"></div>
+    <div class="modal-content" style="max-width:440px;">
+        <button class="modal-close" onclick="closeContactModal()">&times;</button>
+        <div class="modal-body" style="flex-direction:column; padding:24px;">
+            <h3 style="margin:0 0 20px; font-size:18px; font-weight:700;" id="contact-modal-title">Add Contact</h3>
+            <input type="hidden" id="ct-id" value="">
+            <div class="form-group"><label>Name</label><input type="text" id="ct-name"></div>
+            <div class="form-group"><label>Role</label><input type="text" id="ct-role" placeholder="Sales rep, account manager..."></div>
+            <div class="form-row">
+                <div class="form-group"><label>Email</label><input type="email" id="ct-email"></div>
+                <div class="form-group"><label>Phone</label><input type="text" id="ct-phone"></div>
+            </div>
+            <div class="form-group"><label>Notes</label><input type="text" id="ct-notes"></div>
+            <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="ct-primary"> <label for="ct-primary" style="margin:0; text-transform:none; font-size:13px;">Primary contact</label>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn--secondary" onclick="closeContactModal()">Cancel</button>
+            <button class="btn btn--primary" id="btn-save-contact" onclick="saveContact()">Save</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+var VENDOR_ID = {{ vendor.id | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border, #e5e7eb); }
+.data-table th { font-weight:600; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; background:var(--bg-card, #f9fafb); position:sticky; top:0; }
+.data-table tr:hover { background:var(--bg-hover, #f3f4f6); }
+.badge-type { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; }
+.badge-type--supplier { background:#dbeafe; color:#1e40af; }
+.badge-type--rental { background:#fef3c7; color:#92400e; }
+.badge-type--subcontractor { background:#f3e8ff; color:#6b21a8; }
+.badge-type--training { background:#dcfce7; color:#166534; }
+.badge-type--service { background:#e0e7ff; color:#3730a3; }
+.badge-status { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; }
+.badge-status--active { background:#dcfce7; color:#166534; }
+.badge-status--inactive { background:#fee2e2; color:#991b1b; }
+.badge-status--archived { background:#f3f4f6; color:#6b7280; }
+.contact-card { padding:14px 16px; border:1px solid var(--border, #e5e7eb); border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+.contact-card__info { flex:1; }
+.contact-card__name { font-weight:600; font-size:14px; }
+.contact-card__meta { font-size:12px; color:var(--text-muted); margin-top:2px; }
+.contact-card__actions { display:flex; gap:6px; }
+.card { background:var(--bg-card, #fff); border:1px solid var(--border, #e5e7eb); border-radius:8px; }
+.tab-panel { min-height:100px; }
+</style>
+<script>
+let vendorDetail = null;
+
+document.addEventListener('DOMContentLoaded', loadVendorDetail);
+
+async function loadVendorDetail() {
+    try {
+        var resp = await fetch('/api/vendors/' + VENDOR_ID);
+        vendorDetail = await resp.json();
+        renderHeader();
+        renderOverview();
+        renderContacts();
+    } catch(e) {
+        document.getElementById('vendor-subtitle').textContent = 'Failed to load vendor details.';
+    }
+}
+
+function renderHeader() {
+    var v = vendorDetail.vendor;
+    var stats = vendorDetail.stats;
+
+    // Type badge
+    var tb = document.getElementById('vendor-type-badge');
+    tb.textContent = v.vendor_type || 'supplier';
+    tb.className = 'badge-type badge-type--' + (v.vendor_type || 'supplier');
+
+    // Status badge
+    var sb = document.getElementById('vendor-status-badge');
+    sb.textContent = v.status || 'active';
+    sb.className = 'badge-status badge-status--' + (v.status || 'active');
+
+    // Subtitle
+    var parts = [];
+    if (v.phone) parts.push(v.phone);
+    if (v.city && v.state) parts.push(v.city + ', ' + v.state);
+    else if (v.city) parts.push(v.city);
+    if (v.account_number) parts.push('Acct: ' + v.account_number);
+    document.getElementById('vendor-subtitle').textContent = parts.join(' | ');
+
+    // Image
+    if (v.image_path) {
+        document.getElementById('vendor-image-wrap').style.display = 'block';
+        document.getElementById('vendor-image').src = '/vendors/images/' + v.image_path;
+    }
+
+    // Stats
+    document.getElementById('stat-spend').textContent = '$' + stats.total_spend.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+    document.getElementById('stat-month').textContent = '$' + stats.month_spend.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+    document.getElementById('stat-items').textContent = stats.item_count;
+    document.getElementById('stat-receipts').textContent = stats.receipt_count;
+}
+
+function renderOverview() {
+    var v = vendorDetail.vendor;
+
+    // Address
+    var addrParts = [];
+    if (v.address) addrParts.push(escHtml(v.address));
+    var cityLine = [v.city, v.state, v.zip].filter(Boolean).join(', ');
+    if (cityLine) addrParts.push(escHtml(cityLine));
+    if (v.phone) addrParts.push('Phone: ' + escHtml(v.phone));
+    if (v.website) addrParts.push('Web: <a href="' + escHtml(v.website) + '" target="_blank" style="color:var(--color-primary, #2563eb);">' + escHtml(v.website) + '</a>');
+    document.getElementById('info-address').innerHTML = addrParts.join('<br>') || '<span style="color:var(--text-muted);">No address on file</span>';
+
+    // Account
+    var acctParts = [];
+    if (v.account_number) acctParts.push('Account #: <strong>' + escHtml(v.account_number) + '</strong>');
+    if (v.payment_terms) acctParts.push('Terms: <strong>' + escHtml(v.payment_terms) + '</strong>');
+    if (v.has_account) acctParts.push('Has account: Yes');
+    if (v.notes) acctParts.push('Notes: ' + escHtml(v.notes));
+    document.getElementById('info-account').innerHTML = acctParts.join('<br>') || '<span style="color:var(--text-muted);">No account details</span>';
+
+    // Primary contact
+    var contacts = vendorDetail.contacts || [];
+    var primary = contacts.find(function(c) { return c.is_primary; }) || contacts[0];
+    if (primary) {
+        var chtml = '<strong>' + escHtml(primary.name) + '</strong>';
+        if (primary.role) chtml += ' <span style="color:var(--text-muted);">(' + escHtml(primary.role) + ')</span>';
+        if (primary.email) chtml += '<br>Email: <a href="mailto:' + escHtml(primary.email) + '">' + escHtml(primary.email) + '</a>';
+        if (primary.phone) chtml += '<br>Phone: ' + escHtml(primary.phone);
+        document.getElementById('info-contact').innerHTML = chtml;
+    } else {
+        document.getElementById('info-contact').innerHTML = '<span style="color:var(--text-muted);">No contacts added</span>';
+    }
+
+    // Aliases
+    var aliases = vendorDetail.aliases || [];
+    if (aliases.length > 0) {
+        document.getElementById('aliases-section').style.display = 'block';
+        document.getElementById('aliases-list').innerHTML = aliases.map(function(a) {
+            return '<span style="display:inline-block; padding:3px 10px; margin:2px 4px 2px 0; background:var(--bg-card, #f3f4f6); border:1px solid var(--border, #e5e7eb); border-radius:12px; font-size:12px;">' + escHtml(a.alias) + '</span>';
+        }).join('');
+    }
+}
+
+function renderContacts() {
+    var contacts = vendorDetail.contacts || [];
+    var list = document.getElementById('contacts-list');
+    var empty = document.getElementById('contacts-empty');
+    if (contacts.length === 0) { empty.style.display = 'block'; list.innerHTML = ''; return; }
+    empty.style.display = 'none';
+    var html = '';
+    contacts.forEach(function(c) {
+        html += '<div class="contact-card">';
+        html += '<div class="contact-card__info">';
+        html += '<div class="contact-card__name">' + escHtml(c.name) + (c.is_primary ? ' <span style="font-size:11px; color:#166534; background:#dcfce7; padding:1px 6px; border-radius:8px;">Primary</span>' : '') + '</div>';
+        var meta = [];
+        if (c.role) meta.push(c.role);
+        if (c.email) meta.push(c.email);
+        if (c.phone) meta.push(c.phone);
+        html += '<div class="contact-card__meta">' + escHtml(meta.join(' | ')) + '</div>';
+        html += '</div>';
+        if (CAN_EDIT) {
+            html += '<div class="contact-card__actions">';
+            html += '<button class="btn btn--secondary btn--small" onclick="editContact(' + c.id + ')">Edit</button>';
+            html += '<button class="btn btn--secondary btn--small" onclick="deleteContact(' + c.id + ')">Delete</button>';
+            html += '</div>';
+        }
+        html += '</div>';
+    });
+    list.innerHTML = html;
+}
+
+// ── Tab switching ──
+function showTab(tabId, btn) {
+    document.querySelectorAll('.tab-panel').forEach(function(p) { p.style.display = 'none'; });
+    document.querySelectorAll('#detail-tabs .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.getElementById('tab-' + tabId).style.display = 'block';
+    btn.classList.add('active');
+
+    if (tabId === 'receipts') loadReceipts();
+    if (tabId === 'items') loadItems();
+    if (tabId === 'orders') loadOrders();
+}
+
+// ── Receipts tab ──
+let receiptsLoaded = false;
+async function loadReceipts() {
+    if (receiptsLoaded) return;
+    try {
+        var resp = await fetch('/api/vendors/' + VENDOR_ID + '/receipts');
+        var data = await resp.json();
+        document.getElementById('receipts-loading').style.display = 'none';
+        var receipts = data.receipts || [];
+        if (receipts.length === 0) { document.getElementById('receipts-empty').style.display = 'block'; return; }
+        document.getElementById('receipts-wrap').style.display = 'block';
+        var html = '';
+        receipts.forEach(function(r) {
+            html += '<tr>';
+            html += '<td>' + formatDate(r.purchase_date) + '</td>';
+            html += '<td>' + escHtml(r.employee_name || '--') + '</td>';
+            html += '<td>' + escHtml(r.project_name || '--') + '</td>';
+            html += '<td style="text-align:right;">$' + (r.total || 0).toFixed(2) + '</td>';
+            html += '<td>' + escHtml(r.status || '--') + '</td>';
+            html += '</tr>';
+        });
+        document.getElementById('receipts-tbody').innerHTML = html;
+        document.getElementById('receipts-total').textContent = '$' + data.total_spend.toFixed(2);
+        receiptsLoaded = true;
+    } catch(e) { document.getElementById('receipts-loading').textContent = 'Failed to load receipts.'; }
+}
+
+// ── Items tab ──
+let itemsLoaded = false;
+async function loadItems() {
+    if (itemsLoaded) return;
+    try {
+        var resp = await fetch('/api/vendors/' + VENDOR_ID + '/items');
+        var data = await resp.json();
+        document.getElementById('items-loading').style.display = 'none';
+        var items = data.items || [];
+        if (items.length === 0) { document.getElementById('items-empty').style.display = 'block'; return; }
+        document.getElementById('items-wrap').style.display = 'block';
+        var html = '';
+        items.forEach(function(it) {
+            html += '<tr onclick="window.location=\'/stock/items/' + it.id + '\'" style="cursor:pointer;">';
+            html += '<td><strong>' + escHtml(it.name) + '</strong></td>';
+            html += '<td>' + escHtml(it.category || '--') + '</td>';
+            html += '<td>' + escHtml(it.unit || '--') + '</td>';
+            html += '<td style="text-align:right;">' + Number(it.total_qty).toLocaleString() + '</td>';
+            html += '<td style="text-align:right;">' + (it.reorder_point || '--') + '</td>';
+            html += '</tr>';
+        });
+        document.getElementById('items-tbody').innerHTML = html;
+        itemsLoaded = true;
+    } catch(e) { document.getElementById('items-loading').textContent = 'Failed to load items.'; }
+}
+
+// ── Orders tab ──
+let ordersLoaded = false;
+async function loadOrders() {
+    if (ordersLoaded) return;
+    try {
+        var resp = await fetch('/api/vendors/' + VENDOR_ID + '/reorders');
+        var data = await resp.json();
+        document.getElementById('orders-loading').style.display = 'none';
+        var orders = data.reorders || [];
+        if (orders.length === 0) { document.getElementById('orders-empty').style.display = 'block'; return; }
+        document.getElementById('orders-wrap').style.display = 'block';
+        var html = '';
+        orders.forEach(function(o) {
+            html += '<tr>';
+            html += '<td>' + formatDate(o.created_at) + '</td>';
+            html += '<td>' + escHtml(o.status || 'draft') + '</td>';
+            html += '<td>' + escHtml(o.items_json ? JSON.parse(o.items_json).length + ' items' : '--') + '</td>';
+            html += '</tr>';
+        });
+        document.getElementById('orders-tbody').innerHTML = html;
+        ordersLoaded = true;
+    } catch(e) { document.getElementById('orders-loading').textContent = 'Failed to load orders.'; }
+}
+
+// ── Edit vendor modal ──
+function openEditModal() {
+    if (!vendorDetail) return;
+    var v = vendorDetail.vendor;
+    document.getElementById('ed-name').value = v.name || '';
+    document.getElementById('ed-type').value = v.vendor_type || 'supplier';
+    document.getElementById('ed-account').value = v.account_number || '';
+    document.getElementById('ed-address').value = v.address || '';
+    document.getElementById('ed-city').value = v.city || '';
+    document.getElementById('ed-state').value = v.state || '';
+    document.getElementById('ed-zip').value = v.zip || '';
+    document.getElementById('ed-phone').value = v.phone || '';
+    document.getElementById('ed-website').value = v.website || '';
+    document.getElementById('ed-terms').value = v.payment_terms || '';
+    document.getElementById('ed-notes').value = v.notes || '';
+    document.getElementById('edit-modal').style.display = 'flex';
+}
+function closeEditModal() { document.getElementById('edit-modal').style.display = 'none'; }
+
+async function saveVendorEdit() {
+    var btn = document.getElementById('btn-save-edit');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    var payload = {
+        name: document.getElementById('ed-name').value.trim(),
+        vendor_type: document.getElementById('ed-type').value,
+        account_number: document.getElementById('ed-account').value.trim(),
+        address: document.getElementById('ed-address').value.trim(),
+        city: document.getElementById('ed-city').value.trim(),
+        state: document.getElementById('ed-state').value.trim().toUpperCase(),
+        zip: document.getElementById('ed-zip').value.trim(),
+        phone: document.getElementById('ed-phone').value.trim(),
+        website: document.getElementById('ed-website').value.trim(),
+        payment_terms: document.getElementById('ed-terms').value,
+        notes: document.getElementById('ed-notes').value.trim(),
+    };
+    if (!payload.name) { alert('Name required'); btn.disabled = false; btn.textContent = 'Save'; return; }
+    try {
+        var resp = await fetch('/api/vendors/' + VENDOR_ID, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+        if (!resp.ok) { alert('Save failed'); btn.disabled = false; btn.textContent = 'Save'; return; }
+        closeEditModal();
+        location.reload();
+    } catch(e) { alert('Save failed'); }
+    btn.disabled = false; btn.textContent = 'Save';
+}
+
+// ── Contacts ──
+function openContactModal(contact) {
+    document.getElementById('contact-modal-title').textContent = contact ? 'Edit Contact' : 'Add Contact';
+    document.getElementById('ct-id').value = contact ? contact.id : '';
+    document.getElementById('ct-name').value = contact ? contact.name : '';
+    document.getElementById('ct-role').value = contact ? (contact.role || '') : '';
+    document.getElementById('ct-email').value = contact ? (contact.email || '') : '';
+    document.getElementById('ct-phone').value = contact ? (contact.phone || '') : '';
+    document.getElementById('ct-notes').value = contact ? (contact.notes || '') : '';
+    document.getElementById('ct-primary').checked = contact ? !!contact.is_primary : false;
+    document.getElementById('contact-modal').style.display = 'flex';
+}
+function closeContactModal() { document.getElementById('contact-modal').style.display = 'none'; }
+
+function editContact(contactId) {
+    var c = (vendorDetail.contacts || []).find(function(ct) { return ct.id === contactId; });
+    if (c) openContactModal(c);
+}
+
+async function saveContact() {
+    var btn = document.getElementById('btn-save-contact');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    var contactId = document.getElementById('ct-id').value;
+    var payload = {
+        name: document.getElementById('ct-name').value.trim(),
+        role: document.getElementById('ct-role').value.trim(),
+        email: document.getElementById('ct-email').value.trim(),
+        phone: document.getElementById('ct-phone').value.trim(),
+        notes: document.getElementById('ct-notes').value.trim(),
+        is_primary: document.getElementById('ct-primary').checked,
+    };
+    if (!payload.name) { alert('Name required'); btn.disabled = false; btn.textContent = 'Save'; return; }
+    try {
+        var url = '/api/vendors/' + VENDOR_ID + '/contacts' + (contactId ? '/' + contactId : '');
+        var method = contactId ? 'PUT' : 'POST';
+        var resp = await fetch(url, { method:method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+        if (!resp.ok) { alert('Save failed'); btn.disabled = false; btn.textContent = 'Save'; return; }
+        closeContactModal();
+        loadVendorDetail();
+    } catch(e) { alert('Save failed'); }
+    btn.disabled = false; btn.textContent = 'Save';
+}
+
+async function deleteContact(contactId) {
+    if (!confirm('Delete this contact?')) return;
+    try {
+        await fetch('/api/vendors/' + VENDOR_ID + '/contacts/' + contactId, { method:'DELETE' });
+        loadVendorDetail();
+    } catch(e) { alert('Failed to delete contact'); }
+}
+
+function escHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+function formatDate(dateStr) {
+    if (!dateStr) return '--';
+    var d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+}
+</script>
+{% endblock %}

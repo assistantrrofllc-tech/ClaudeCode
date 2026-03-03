@@ -1,0 +1,367 @@
+{% extends "base.html" %}
+{% block title %}CrewOS — Vendors{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+    <h1 style="margin:0;">Vendors</h1>
+    {% if can_edit %}
+    <button class="btn btn--primary btn--small" onclick="openAddModal()">Add Vendor</button>
+    {% endif %}
+</div>
+
+<!-- Stats Row -->
+<div class="stats-row stats-row--4col" id="vendor-stats">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-total">--</div>
+        <div class="stat-label">Total Vendors</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-suppliers">--</div>
+        <div class="stat-label">Suppliers</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-spend">--</div>
+        <div class="stat-label">Total Spend</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-unmatched">--</div>
+        <div class="stat-label">Unmatched Receipts</div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="crew-filters">
+    <div class="search-bar">
+        <input type="text" id="vendor-search" placeholder="Search vendors by name, contact, or account #..." oninput="loadVendors()">
+    </div>
+    <div class="crew-filter-pills" id="type-tabs">
+        <button class="filter-btn active" onclick="setTypeFilter('all', this)">All</button>
+        <button class="filter-btn" onclick="setTypeFilter('supplier', this)">Suppliers</button>
+        <button class="filter-btn" onclick="setTypeFilter('rental', this)">Rental</button>
+        <button class="filter-btn" onclick="setTypeFilter('subcontractor', this)">Subcontractors</button>
+        <button class="filter-btn" onclick="setTypeFilter('training', this)">Training</button>
+        <button class="filter-btn" onclick="setTypeFilter('service', this)">Service</button>
+    </div>
+</div>
+
+<!-- Vendor Table -->
+<div id="vendors-loading" class="loading">Loading vendors...</div>
+<div id="vendors-empty" class="card" style="display:none; text-align:center; padding:48px 20px;">
+    <p style="color:var(--text-muted); font-size:16px;">No vendors found.</p>
+</div>
+<div id="vendors-wrap" style="display:none; overflow-x:auto;">
+    <table class="data-table" id="vendors-table">
+        <thead>
+            <tr>
+                <th>Vendor</th>
+                <th>Type</th>
+                <th>Primary Contact</th>
+                <th>Phone</th>
+                <th style="text-align:right;">Items</th>
+                <th style="text-align:right;">Total Spend</th>
+                <th>Last Receipt</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="vendors-tbody"></tbody>
+    </table>
+</div>
+
+<!-- Add/Edit Vendor Modal -->
+{% if can_edit %}
+<div id="vendor-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeVendorModal()"></div>
+    <div class="modal-content" style="max-width:600px;">
+        <button class="modal-close" onclick="closeVendorModal()">&times;</button>
+        <div class="modal-body" style="flex-direction:column; padding:24px;">
+            <h3 style="margin:0 0 20px; font-size:18px; font-weight:700;" id="modal-title">Add Vendor</h3>
+            <input type="hidden" id="edit-vendor-id" value="">
+            <div class="form-group">
+                <label>Company Name</label>
+                <input type="text" id="edit-name" placeholder="e.g. Triangle Fastener">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="edit-type">
+                        <option value="supplier">Supplier</option>
+                        <option value="rental">Rental</option>
+                        <option value="subcontractor">Subcontractor</option>
+                        <option value="training">Training</option>
+                        <option value="service">Service</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Account #</label>
+                    <input type="text" id="edit-account">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Address</label>
+                <input type="text" id="edit-address" placeholder="Street address">
+            </div>
+            <div class="form-row form-row--3col">
+                <div class="form-group">
+                    <label>City</label>
+                    <input type="text" id="edit-city">
+                </div>
+                <div class="form-group">
+                    <label>State</label>
+                    <input type="text" id="edit-state" maxlength="2" placeholder="FL">
+                </div>
+                <div class="form-group">
+                    <label>ZIP</label>
+                    <input type="text" id="edit-zip" maxlength="10">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="text" id="edit-phone">
+                </div>
+                <div class="form-group">
+                    <label>Website</label>
+                    <input type="text" id="edit-website" placeholder="https://">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Payment Terms</label>
+                    <select id="edit-terms">
+                        <option value="">-- Select --</option>
+                        <option value="COD">COD</option>
+                        <option value="Net 15">Net 15</option>
+                        <option value="Net 30">Net 30</option>
+                        <option value="Net 60">Net 60</option>
+                        <option value="Credit Card">Credit Card</option>
+                        <option value="Prepaid">Prepaid</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Contact Name</label>
+                    <input type="text" id="edit-contact-name">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Contact Email</label>
+                    <input type="email" id="edit-contact-email">
+                </div>
+                <div class="form-group">
+                    <label>Contact Phone</label>
+                    <input type="text" id="edit-contact-phone">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <input type="text" id="edit-notes" placeholder="Special instructions, account details...">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn--secondary" onclick="closeVendorModal()">Cancel</button>
+            <button class="btn btn--primary" id="btn-save" onclick="saveVendor()">Save</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border, #e5e7eb); }
+.data-table th { font-weight:600; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; background:var(--bg-card, #f9fafb); position:sticky; top:0; }
+.data-table tr:hover { background:var(--bg-hover, #f3f4f6); cursor:pointer; }
+.badge-type { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; }
+.badge-type--supplier { background:#dbeafe; color:#1e40af; }
+.badge-type--rental { background:#fef3c7; color:#92400e; }
+.badge-type--subcontractor { background:#f3e8ff; color:#6b21a8; }
+.badge-type--training { background:#dcfce7; color:#166534; }
+.badge-type--service { background:#e0e7ff; color:#3730a3; }
+.badge-status { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; }
+.badge-status--active { background:#dcfce7; color:#166534; }
+.badge-status--inactive { background:#fee2e2; color:#991b1b; }
+.badge-status--archived { background:#f3f4f6; color:#6b7280; }
+.vendor-link { color:inherit; text-decoration:none; font-weight:600; }
+.vendor-link:hover { color:var(--color-primary, #2563eb); text-decoration:underline; }
+</style>
+<script>
+let currentType = 'all';
+let vendorData = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadVendors();
+    loadStats();
+});
+
+async function loadStats() {
+    try {
+        var resp = await fetch('/api/vendors/unmatched');
+        var data = await resp.json();
+        document.getElementById('stat-unmatched').textContent = (data.receipts || []).length;
+    } catch(e) {
+        document.getElementById('stat-unmatched').textContent = '--';
+    }
+}
+
+async function loadVendors() {
+    var loading = document.getElementById('vendors-loading');
+    var empty = document.getElementById('vendors-empty');
+    var wrap = document.getElementById('vendors-wrap');
+
+    loading.style.display = 'block';
+    empty.style.display = 'none';
+    wrap.style.display = 'none';
+
+    var params = new URLSearchParams();
+    if (currentType !== 'all') params.set('type', currentType);
+    params.set('status', 'all');
+    var search = document.getElementById('vendor-search').value.trim();
+    if (search) params.set('search', search);
+
+    try {
+        var resp = await fetch('/api/vendors?' + params.toString());
+        var data = await resp.json();
+        vendorData = data.vendors || [];
+
+        loading.style.display = 'none';
+
+        // Update stats
+        var active = vendorData.filter(function(v) { return v.status !== 'archived'; });
+        document.getElementById('stat-total').textContent = active.length;
+        document.getElementById('stat-suppliers').textContent = active.filter(function(v) { return v.vendor_type === 'supplier'; }).length;
+        var totalSpend = active.reduce(function(sum, v) { return sum + (v.total_spend || 0); }, 0);
+        document.getElementById('stat-spend').textContent = '$' + totalSpend.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+
+        if (vendorData.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        wrap.style.display = 'block';
+        renderTable(vendorData);
+    } catch(e) {
+        loading.textContent = 'Failed to load vendors.';
+    }
+}
+
+function renderTable(vendors) {
+    var tbody = document.getElementById('vendors-tbody');
+    var html = '';
+    vendors.forEach(function(v) {
+        html += '<tr onclick="window.location=\'/vendors/' + v.id + '\'">';
+        html += '<td><a class="vendor-link" href="/vendors/' + v.id + '">' + escHtml(v.name) + '</a></td>';
+        html += '<td><span class="badge-type badge-type--' + (v.vendor_type || 'supplier') + '">' + escHtml(v.vendor_type || 'supplier') + '</span></td>';
+        html += '<td>';
+        if (v.primary_contact_name) {
+            html += escHtml(v.primary_contact_name);
+            if (v.primary_contact_email) html += '<br><span style="font-size:11px; color:var(--text-muted);">' + escHtml(v.primary_contact_email) + '</span>';
+        } else {
+            html += '<span style="color:var(--text-muted);">--</span>';
+        }
+        html += '</td>';
+        html += '<td>' + escHtml(v.phone || '--') + '</td>';
+        html += '<td style="text-align:right;">' + (v.item_count || 0) + '</td>';
+        html += '<td style="text-align:right;">' + (v.total_spend > 0 ? '$' + Number(v.total_spend).toLocaleString(undefined, {minimumFractionDigits: 2}) : '--') + '</td>';
+        html += '<td>' + (v.last_receipt_date ? formatDate(v.last_receipt_date) : '--') + '</td>';
+        html += '<td><span class="badge-status badge-status--' + (v.status || 'active') + '">' + escHtml(v.status || 'active') + '</span></td>';
+        html += '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function setTypeFilter(type, btn) {
+    currentType = type;
+    document.querySelectorAll('#type-tabs .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    loadVendors();
+}
+
+function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Add Vendor';
+    document.getElementById('edit-vendor-id').value = '';
+    ['name','type','account','address','city','state','zip','phone','website','terms','contact-name','contact-email','contact-phone','notes'].forEach(function(f) {
+        var el = document.getElementById('edit-' + f);
+        if (el) el.value = '';
+    });
+    document.getElementById('edit-type').value = 'supplier';
+    document.getElementById('vendor-modal').style.display = 'flex';
+}
+
+function openEditVendorModal(v) {
+    document.getElementById('modal-title').textContent = 'Edit Vendor';
+    document.getElementById('edit-vendor-id').value = v.id;
+    document.getElementById('edit-name').value = v.name || '';
+    document.getElementById('edit-type').value = v.vendor_type || 'supplier';
+    document.getElementById('edit-account').value = v.account_number || '';
+    document.getElementById('edit-address').value = v.address || '';
+    document.getElementById('edit-city').value = v.city || '';
+    document.getElementById('edit-state').value = v.state || '';
+    document.getElementById('edit-zip').value = v.zip || '';
+    document.getElementById('edit-phone').value = v.phone || '';
+    document.getElementById('edit-website').value = v.website || '';
+    document.getElementById('edit-terms').value = v.payment_terms || '';
+    document.getElementById('edit-contact-name').value = v.contact_name || '';
+    document.getElementById('edit-contact-email').value = v.contact_email || '';
+    document.getElementById('edit-contact-phone').value = v.contact_phone || '';
+    document.getElementById('edit-notes').value = v.notes || '';
+    document.getElementById('vendor-modal').style.display = 'flex';
+}
+
+function closeVendorModal() {
+    document.getElementById('vendor-modal').style.display = 'none';
+}
+
+async function saveVendor() {
+    var btn = document.getElementById('btn-save');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    var vendorId = document.getElementById('edit-vendor-id').value;
+    var payload = {
+        name: document.getElementById('edit-name').value.trim(),
+        vendor_type: document.getElementById('edit-type').value,
+        account_number: document.getElementById('edit-account').value.trim(),
+        address: document.getElementById('edit-address').value.trim(),
+        city: document.getElementById('edit-city').value.trim(),
+        state: document.getElementById('edit-state').value.trim().toUpperCase(),
+        zip: document.getElementById('edit-zip').value.trim(),
+        phone: document.getElementById('edit-phone').value.trim(),
+        website: document.getElementById('edit-website').value.trim(),
+        payment_terms: document.getElementById('edit-terms').value,
+        contact_name: document.getElementById('edit-contact-name').value.trim(),
+        contact_email: document.getElementById('edit-contact-email').value.trim(),
+        contact_phone: document.getElementById('edit-contact-phone').value.trim(),
+        notes: document.getElementById('edit-notes').value.trim(),
+    };
+
+    if (!payload.name) { alert('Vendor name is required'); btn.disabled = false; btn.textContent = 'Save'; return; }
+
+    try {
+        var url = vendorId ? '/api/vendors/' + vendorId : '/api/vendors';
+        var method = vendorId ? 'PUT' : 'POST';
+        var resp = await fetch(url, { method: method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Save failed'); btn.disabled = false; btn.textContent = 'Save'; return; }
+        closeVendorModal();
+        loadVendors();
+    } catch(e) { alert('Save failed'); }
+    btn.disabled = false;
+    btn.textContent = 'Save';
+}
+
+function escHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+function formatDate(dateStr) {
+    if (!dateStr) return '--';
+    var d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+}
+</script>
+{% endblock %}

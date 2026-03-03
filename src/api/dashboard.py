@@ -155,6 +155,19 @@ def home():
         except Exception:
             pass
 
+        # Vendor stats (safe — tables may not exist yet)
+        vendor_count = 0
+        vendor_unmatched_count = 0
+        try:
+            row = db.execute("SELECT COUNT(*) as cnt FROM vendors WHERE status = 'active'").fetchone()
+            vendor_count = row["cnt"] if row else 0
+            row = db.execute(
+                "SELECT COUNT(*) AS cnt FROM receipts WHERE vendor_id IS NULL AND vendor_name IS NOT NULL AND vendor_name != ''"
+            ).fetchone()
+            vendor_unmatched_count = row["cnt"] if row else 0
+        except Exception:
+            pass
+
         # Consolidated module stats dict for home page cards
         module_stats = {
             "crewledger": {
@@ -185,6 +198,8 @@ def home():
             receipts_this_month=receipts_this_month,
             stock_item_count=stock_item_count,
             stock_low_count=stock_low_count,
+            vendor_count=vendor_count,
+            vendor_unmatched_count=vendor_unmatched_count,
             module_stats=module_stats,
         )
     finally:

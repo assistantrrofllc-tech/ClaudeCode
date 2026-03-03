@@ -33,6 +33,7 @@ from src.api.user_management import user_mgmt_bp
 from src.api.fleet import fleet_bp
 from src.api.training import training_bp
 from src.api.stock import stock_bp
+from src.api.vendors import vendors_bp
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ def create_app() -> Flask:
         {"id": "crewschedule", "label": "CrewSchedule", "href": "#", "enabled": False, "dev_only": True},
         {"id": "crewasset", "label": "CrewAsset", "href": "/fleet/", "enabled": True, "dev_only": True},
         {"id": "crewinventory", "label": "CrewInventory", "href": "/stock/", "enabled": True, "dev_only": True},
+        {"id": "vendors", "label": "Vendors", "href": "/vendors", "enabled": True, "dev_only": True},
     ]
 
     @app.context_processor
@@ -106,6 +108,7 @@ def create_app() -> Flask:
     app.register_blueprint(fleet_bp)
     app.register_blueprint(training_bp)
     app.register_blueprint(stock_bp)
+    app.register_blueprint(vendors_bp)
 
     @app.route("/health")
     def health():
