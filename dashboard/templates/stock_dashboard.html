@@ -48,13 +48,13 @@
                 <tr>
                     <th style="width:40px;"></th>
                     <th>Item</th>
-                    <th>Supplier</th>
                     <th>Manufacturer</th>
-                    <th>Category</th>
-                    <th>Shop</th>
-                    <th>Section</th>
                     <th style="text-align:right;">Qty</th>
                     <th>Unit</th>
+                    <th>Shop</th>
+                    <th>Section</th>
+                    <th>Category</th>
+                    <th>Supplier</th>
                     <th style="text-align:right;">Reorder Pt</th>
                 </tr>
             </thead>
@@ -189,16 +189,17 @@ async function loadInventory() {
             }
             html += '</td>';
             html += '<td><a class="item-link" href="/stock/items/' + item.id + '"><strong>' + escHtml(item.name) + '</strong></a></td>';
-            html += '<td>' + escHtml(item.vendor_name || '--') + '</td>';
             html += '<td>' + escHtml(item.manufacturer || '--') + '</td>';
-            html += '<td>' + escHtml(item.category || '--') + '</td>';
-            html += '<td>' + escHtml(item.shop_name || '--') + '</td>';
-            html += '<td>' + escHtml(item.section || '--') + '</td>';
             html += '<td style="text-align:right;">';
-            html += (item.quantity != null ? Number(item.quantity).toLocaleString() : '0');
+            var qtyVal = item.quantity != null ? Number(item.quantity) : 0;
+            html += formatDualQty(qtyVal, item);
             if (item.low_stock) html += ' <span class="badge-low">LOW</span>';
             html += '</td>';
-            html += '<td>' + escHtml(item.unit || '--') + '</td>';
+            html += '<td>' + escHtml(item.unit_label || item.unit || '--') + '</td>';
+            html += '<td>' + escHtml(item.shop_name || '--') + '</td>';
+            html += '<td>' + escHtml(item.section || '--') + '</td>';
+            html += '<td>' + escHtml(item.category || '--') + '</td>';
+            html += '<td>' + escHtml(item.vendor_name || '--') + '</td>';
             html += '<td style="text-align:right;">' + (item.reorder_point || '--') + '</td>';
             html += '</tr>';
         });
@@ -241,6 +242,20 @@ async function loadProjects() {
         empty.style.display = 'block';
         empty.textContent = 'Failed to load projects.';
     }
+}
+
+function formatDualQty(qty, item) {
+    if (!item) return String(qty);
+    var unitLabel = item.unit_label || item.unit || 'EA';
+    var ppu = item.pieces_per_unit || 0;
+    var packLabel = item.pack_label || 'BOX';
+    if (ppu > 1) {
+        var packs = Math.floor(qty / ppu);
+        var remainder = qty % ppu;
+        if (packs > 0 && remainder === 0) return qty.toLocaleString() + ' ' + unitLabel + ' (' + packs + ' ' + packLabel + ')';
+        if (packs > 0) return qty.toLocaleString() + ' ' + unitLabel + ' (' + packs + ' ' + packLabel + ' + ' + remainder + ')';
+    }
+    return qty.toLocaleString() + ' ' + unitLabel;
 }
 
 function escHtml(str) {

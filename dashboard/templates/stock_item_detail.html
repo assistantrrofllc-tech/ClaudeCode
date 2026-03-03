@@ -59,7 +59,34 @@
     </table>
 </div>
 
-<!-- Edit Modal -->
+<!-- Vendor SKU Mappings -->
+<div style="margin-top:32px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <h2 style="font-size:16px; margin:0;">Vendor SKUs</h2>
+        {% if can_edit %}
+        <button class="btn btn--secondary btn--small" onclick="openMapModal()">Add Vendor SKU</button>
+        {% endif %}
+    </div>
+    <div id="maps-empty" style="display:none; color:var(--text-muted); font-size:14px;">No vendor mappings yet.</div>
+    <div id="maps-wrap" style="display:none; overflow-x:auto;">
+        <table class="data-table" id="maps-table">
+            <thead>
+                <tr>
+                    <th>Vendor</th>
+                    <th>Vendor SKU</th>
+                    <th>Vendor Name</th>
+                    <th>Vendor Unit</th>
+                    <th style="text-align:right;">Qty per Unit</th>
+                    <th>Notes</th>
+                    {% if can_edit %}<th style="width:80px;"></th>{% endif %}
+                </tr>
+            </thead>
+            <tbody id="maps-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Edit Item Modal -->
 {% if can_edit %}
 <div id="edit-modal" class="modal" style="display:none;">
     <div class="modal-backdrop" onclick="closeEditModal()"></div>
@@ -97,33 +124,110 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Unit</label>
-                    <input type="text" id="edit-unit" placeholder="e.g. ROLLS, BOXES, EACH">
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
                     <label>Vendor</label>
                     <select id="edit-vendor">
                         <option value="">-- None --</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>Reorder Point</label>
-                    <input type="number" id="edit-reorder" min="0" step="1">
-                </div>
             </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Pieces Per Unit</label>
-                    <input type="number" id="edit-pieces" min="0" step="1">
+            <div style="border:1px solid var(--border, #e5e7eb); border-radius:8px; padding:16px; margin:8px 0;">
+                <div style="font-weight:600; font-size:13px; margin-bottom:12px; color:var(--text-muted);">Unit Configuration</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Unit Label</label>
+                        <select id="edit-unit-label">
+                            <option value="EA">EA (Each)</option>
+                            <option value="TUBE">TUBE</option>
+                            <option value="PIECE">PIECE</option>
+                            <option value="ROLL">ROLL</option>
+                            <option value="SHEET">SHEET</option>
+                            <option value="FT">FT (Foot)</option>
+                            <option value="GAL">GAL (Gallon)</option>
+                            <option value="LB">LB (Pound)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Reorder Point</label>
+                        <input type="number" id="edit-reorder" min="0" step="1">
+                    </div>
                 </div>
-                <div class="form-group"></div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Pack Size</label>
+                        <input type="number" id="edit-pieces" min="0" step="1" placeholder="e.g. 24">
+                    </div>
+                    <div class="form-group">
+                        <label>Pack Label</label>
+                        <select id="edit-pack-label">
+                            <option value="BOX">BOX</option>
+                            <option value="CASE">CASE</option>
+                            <option value="PACK">PACK</option>
+                            <option value="BUNDLE">BUNDLE</option>
+                            <option value="PALLET">PALLET</option>
+                            <option value="ROLL">ROLL</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:4px;" id="unit-preview"></div>
             </div>
         </div>
         <div class="modal-footer">
             <button class="btn btn--secondary" onclick="closeEditModal()">Cancel</button>
             <button class="btn btn--primary" id="btn-save-edit" onclick="saveItem()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Vendor SKU Modal -->
+<div id="map-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeMapModal()"></div>
+    <div class="modal-content" style="max-width:480px;">
+        <button class="modal-close" onclick="closeMapModal()">&times;</button>
+        <div class="modal-body" style="flex-direction:column; padding:24px;">
+            <h3 style="margin:0 0 20px; font-size:18px; font-weight:700;" id="map-modal-title">Add Vendor SKU</h3>
+            <input type="hidden" id="map-edit-id" value="">
+            <div class="form-group">
+                <label>Vendor</label>
+                <select id="map-vendor">
+                    <option value="">-- Select Vendor --</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Vendor SKU</label>
+                    <input type="text" id="map-sku" placeholder="e.g. APS500SBZ130">
+                </div>
+                <div class="form-group">
+                    <label>Vendor Name for Item</label>
+                    <input type="text" id="map-item-name" placeholder="How vendor lists it">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Vendor Unit</label>
+                    <select id="map-unit">
+                        <option value="EA">EA (Each)</option>
+                        <option value="BOX">BOX</option>
+                        <option value="CASE">CASE</option>
+                        <option value="ROLL">ROLL</option>
+                        <option value="PAIL">PAIL</option>
+                        <option value="BUNDLE">BUNDLE</option>
+                        <option value="PACK">PACK</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Singles per Vendor Unit</label>
+                    <input type="number" id="map-qty" min="1" step="1" value="1" placeholder="e.g. 500">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <input type="text" id="map-notes" placeholder="Pricing, lead time, etc.">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn--secondary" onclick="closeMapModal()">Cancel</button>
+            <button class="btn btn--primary" id="btn-save-map" onclick="saveMap()">Save</button>
         </div>
     </div>
 </div>
@@ -168,11 +272,42 @@ var ITEM_ID = {{ item.id | tojson }};
 .badge--return { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#dcfce7; color:#166534; }
 .badge--restock { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#fef3c7; color:#92400e; }
 .badge--adjustment { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#f3e8ff; color:#6b21a8; }
+.badge--document_import { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#e0e7ff; color:#3730a3; }
+.map-actions { display:flex; gap:4px; }
+.map-actions button { border:none; background:none; cursor:pointer; font-size:13px; padding:4px 6px; border-radius:4px; }
+.map-actions button:hover { background:var(--bg-hover, #f3f4f6); }
 </style>
 <script>
 let detailData = null;
+let vendorMaps = [];
+let allVendors = [];
 
-document.addEventListener('DOMContentLoaded', loadDetail);
+document.addEventListener('DOMContentLoaded', function() {
+    loadDetail();
+    loadVendorMaps();
+});
+
+// ── Dual Unit Formatting ─────────────────────────────────────
+
+function formatDualQty(qty, item) {
+    if (!item) return String(qty);
+    var unitLabel = item.unit_label || item.unit || 'EA';
+    var ppu = item.pieces_per_unit || 0;
+    var packLabel = item.pack_label || 'BOX';
+
+    if (ppu > 1) {
+        var packs = Math.floor(qty / ppu);
+        var remainder = qty % ppu;
+        if (packs > 0 && remainder === 0) {
+            return qty.toLocaleString() + ' ' + unitLabel + ' (' + packs + ' ' + packLabel + ')';
+        } else if (packs > 0) {
+            return qty.toLocaleString() + ' ' + unitLabel + ' (' + packs + ' ' + packLabel + ' + ' + remainder + ')';
+        }
+    }
+    return qty.toLocaleString() + ' ' + unitLabel;
+}
+
+// ── Detail Loading ───────────────────────────────────────────
 
 async function loadDetail() {
     try {
@@ -192,7 +327,9 @@ function renderDetail() {
     if (item.vendor_name) parts.push('Vendor: ' + item.vendor_name);
     if (item.manufacturer) parts.push('Mfr: ' + item.manufacturer);
     if (item.category) parts.push(item.category);
-    if (item.unit) parts.push(item.unit);
+    var unitStr = item.unit_label || item.unit || '';
+    if (item.pieces_per_unit > 1) unitStr += ' (' + item.pieces_per_unit + ' per ' + (item.pack_label || 'BOX') + ')';
+    if (unitStr) parts.push(unitStr);
     document.getElementById('item-subtitle').textContent = parts.join(' | ');
 
     // Image
@@ -203,13 +340,15 @@ function renderDetail() {
         if (rmBtn) rmBtn.style.display = 'inline-block';
     }
 
-    // Stats
-    document.getElementById('stat-shop-qty').textContent = detailData.total_shop_qty;
-    document.getElementById('stat-proj-qty').textContent = detailData.total_project_qty;
-    document.getElementById('stat-total-qty').textContent = detailData.total_shop_qty + detailData.total_project_qty;
+    // Stats — dual unit display
+    var shopQty = detailData.total_shop_qty;
+    var projQty = detailData.total_project_qty;
+    document.getElementById('stat-shop-qty').textContent = formatDualQty(shopQty, item);
+    document.getElementById('stat-proj-qty').textContent = formatDualQty(projQty, item);
+    document.getElementById('stat-total-qty').textContent = formatDualQty(shopQty + projQty, item);
     document.getElementById('stat-reorder').textContent = item.reorder_point || 0;
 
-    // Locations
+    // Locations — dual unit display
     var shops = detailData.shop_inventory || [];
     var projs = detailData.project_inventory || [];
     if (shops.length === 0 && projs.length === 0) {
@@ -218,17 +357,17 @@ function renderDetail() {
         document.getElementById('locations-wrap').style.display = 'block';
         var html = '';
         shops.forEach(function(s) {
-            html += '<tr><td>' + escHtml(s.shop_name) + '</td><td>Shop</td><td>' + escHtml(s.section || '--') + '</td><td style="text-align:right;">' + Number(s.quantity).toLocaleString() + '</td></tr>';
+            html += '<tr><td>' + escHtml(s.shop_name) + '</td><td>Shop</td><td>' + escHtml(s.section || '--') + '</td><td style="text-align:right;">' + formatDualQty(s.quantity || 0, item) + '</td></tr>';
         });
         projs.forEach(function(p) {
-            var qtyStr = Number(p.quantity).toLocaleString();
+            var qtyStr = formatDualQty(p.quantity || 0, item);
             if (p.quantity_ordered > 0) qtyStr += ' / ' + Number(p.quantity_ordered).toLocaleString() + ' ordered';
             html += '<tr><td><a href="/stock/project/' + p.project_id + '">' + escHtml(p.project_name) + '</a></td><td>Project</td><td>--</td><td style="text-align:right;">' + qtyStr + '</td></tr>';
         });
         document.getElementById('locations-tbody').innerHTML = html;
     }
 
-    // Transactions
+    // Transactions — dual unit display
     var txns = detailData.transactions || [];
     if (txns.length === 0) {
         document.getElementById('txn-empty').style.display = 'block';
@@ -239,7 +378,7 @@ function renderDetail() {
             html += '<tr>';
             html += '<td>' + formatDate(t.created_at) + '</td>';
             html += '<td><span class="badge--' + t.type + '">' + escHtml(t.type) + '</span></td>';
-            html += '<td style="text-align:right;">' + Number(t.quantity).toLocaleString() + '</td>';
+            html += '<td style="text-align:right;">' + formatDualQty(t.quantity || 0, item) + '</td>';
             html += '<td>' + escHtml(t.shop_name || '--') + '</td>';
             html += '<td>' + escHtml(t.project_name || '--') + '</td>';
             html += '<td>' + escHtml(t.employee_name || '--') + '</td>';
@@ -248,6 +387,50 @@ function renderDetail() {
         document.getElementById('txn-tbody').innerHTML = html;
     }
 }
+
+// ── Vendor Mappings ──────────────────────────────────────────
+
+async function loadVendorMaps() {
+    try {
+        var resp = await fetch('/stock/api/items/' + ITEM_ID + '/vendor-maps');
+        var data = await resp.json();
+        vendorMaps = data.maps || [];
+        renderMaps();
+    } catch(e) {
+        document.getElementById('maps-empty').style.display = 'block';
+    }
+}
+
+function renderMaps() {
+    if (vendorMaps.length === 0) {
+        document.getElementById('maps-empty').style.display = 'block';
+        document.getElementById('maps-wrap').style.display = 'none';
+        return;
+    }
+    document.getElementById('maps-empty').style.display = 'none';
+    document.getElementById('maps-wrap').style.display = 'block';
+
+    var html = '';
+    vendorMaps.forEach(function(m) {
+        html += '<tr>';
+        html += '<td><strong>' + escHtml(m.vendor_name) + '</strong></td>';
+        html += '<td>' + escHtml(m.vendor_sku || '--') + '</td>';
+        html += '<td>' + escHtml(m.vendor_item_name || '--') + '</td>';
+        html += '<td>' + escHtml(m.vendor_unit || 'EA') + '</td>';
+        html += '<td style="text-align:right;">' + (m.vendor_unit_quantity || 1) + '</td>';
+        html += '<td>' + escHtml(m.notes || '--') + '</td>';
+        if (CAN_EDIT) {
+            html += '<td><div class="map-actions">';
+            html += '<button onclick="editMap(' + m.id + ')" title="Edit">&#9998;</button>';
+            html += '<button onclick="deleteMap(' + m.id + ')" title="Delete" style="color:#dc2626;">&#10005;</button>';
+            html += '</div></td>';
+        }
+        html += '</tr>';
+    });
+    document.getElementById('maps-tbody').innerHTML = html;
+}
+
+// ── Image Upload ─────────────────────────────────────────────
 
 async function uploadImage() {
     var input = document.getElementById('image-upload');
@@ -271,6 +454,8 @@ async function removeImage() {
     } catch(e) { alert('Failed to remove image'); }
 }
 
+// ── Vendor Loading (shared by edit + map modals) ─────────────
+
 let vendorsLoaded = false;
 
 async function loadVendors() {
@@ -278,17 +463,32 @@ async function loadVendors() {
     try {
         var resp = await fetch('/stock/api/vendors');
         var data = await resp.json();
+        allVendors = data.vendors || [];
+        // Populate edit modal vendor dropdown
         var sel = document.getElementById('edit-vendor');
-        if (!sel) return;
-        (data.vendors || []).forEach(function(v) {
-            var opt = document.createElement('option');
-            opt.value = v.id;
-            opt.textContent = v.name;
-            sel.appendChild(opt);
-        });
+        if (sel) {
+            allVendors.forEach(function(v) {
+                var opt = document.createElement('option');
+                opt.value = v.id;
+                opt.textContent = v.name;
+                sel.appendChild(opt);
+            });
+        }
+        // Populate map modal vendor dropdown
+        var mapSel = document.getElementById('map-vendor');
+        if (mapSel) {
+            allVendors.forEach(function(v) {
+                var opt = document.createElement('option');
+                opt.value = v.id;
+                opt.textContent = v.name;
+                mapSel.appendChild(opt);
+            });
+        }
         vendorsLoaded = true;
     } catch(e) {}
 }
+
+// ── Edit Item Modal ──────────────────────────────────────────
 
 function openEditModal() {
     if (!detailData) return;
@@ -296,12 +496,14 @@ function openEditModal() {
     document.getElementById('edit-name').value = item.name || '';
     document.getElementById('edit-manufacturer').value = item.manufacturer || '';
     document.getElementById('edit-category').value = (item.category || '').toLowerCase();
-    document.getElementById('edit-unit').value = item.unit || '';
     document.getElementById('edit-reorder').value = item.reorder_point || 0;
     document.getElementById('edit-pieces').value = item.pieces_per_unit || '';
+    document.getElementById('edit-unit-label').value = item.unit_label || item.unit || 'EA';
+    document.getElementById('edit-pack-label').value = item.pack_label || 'BOX';
     loadVendors().then(function() {
         document.getElementById('edit-vendor').value = item.vendor_id || '';
     });
+    updateUnitPreview();
     document.getElementById('edit-modal').style.display = 'flex';
 }
 
@@ -309,18 +511,42 @@ function closeEditModal() {
     document.getElementById('edit-modal').style.display = 'none';
 }
 
+function updateUnitPreview() {
+    var unitLabel = document.getElementById('edit-unit-label').value || 'EA';
+    var ppu = parseInt(document.getElementById('edit-pieces').value) || 0;
+    var packLabel = document.getElementById('edit-pack-label').value || 'BOX';
+    var preview = document.getElementById('unit-preview');
+    if (ppu > 1) {
+        preview.textContent = 'Example: ' + (ppu * 2) + ' ' + unitLabel + ' = 2 ' + packLabel;
+    } else {
+        preview.textContent = 'No pack conversion — counted as individual ' + unitLabel;
+    }
+}
+
+// Update preview when fields change
+document.addEventListener('DOMContentLoaded', function() {
+    ['edit-unit-label', 'edit-pieces', 'edit-pack-label'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateUnitPreview);
+        if (el) el.addEventListener('change', updateUnitPreview);
+    });
+});
+
 async function saveItem() {
     var btn = document.getElementById('btn-save-edit');
     btn.disabled = true;
     btn.textContent = 'Saving...';
 
+    var unitLabel = document.getElementById('edit-unit-label').value.trim().toUpperCase() || 'EA';
     var payload = {
         name: document.getElementById('edit-name').value.trim(),
         manufacturer: document.getElementById('edit-manufacturer').value.trim(),
         category: document.getElementById('edit-category').value,
-        unit: document.getElementById('edit-unit').value.trim().toUpperCase(),
+        unit: unitLabel,
+        unit_label: unitLabel,
         reorder_point: parseInt(document.getElementById('edit-reorder').value) || 0,
         pieces_per_unit: parseInt(document.getElementById('edit-pieces').value) || null,
+        pack_label: document.getElementById('edit-pack-label').value.trim().toUpperCase() || 'BOX',
         vendor_id: document.getElementById('edit-vendor').value ? parseInt(document.getElementById('edit-vendor').value) : null,
     };
 
@@ -353,6 +579,108 @@ async function saveItem() {
     btn.disabled = false;
     btn.textContent = 'Save Changes';
 }
+
+// ── Vendor SKU Map Modal ─────────────────────────────────────
+
+function openMapModal(editId) {
+    document.getElementById('map-edit-id').value = editId || '';
+    document.getElementById('map-modal-title').textContent = editId ? 'Edit Vendor SKU' : 'Add Vendor SKU';
+
+    if (editId) {
+        var m = vendorMaps.find(function(x) { return x.id === editId; });
+        if (m) {
+            loadVendors().then(function() {
+                document.getElementById('map-vendor').value = m.vendor_id;
+                document.getElementById('map-vendor').disabled = true;
+            });
+            document.getElementById('map-sku').value = m.vendor_sku || '';
+            document.getElementById('map-item-name').value = m.vendor_item_name || '';
+            document.getElementById('map-unit').value = m.vendor_unit || 'EA';
+            document.getElementById('map-qty').value = m.vendor_unit_quantity || 1;
+            document.getElementById('map-notes').value = m.notes || '';
+        }
+    } else {
+        loadVendors().then(function() {
+            document.getElementById('map-vendor').value = '';
+            document.getElementById('map-vendor').disabled = false;
+        });
+        document.getElementById('map-sku').value = '';
+        document.getElementById('map-item-name').value = '';
+        document.getElementById('map-unit').value = 'EA';
+        document.getElementById('map-qty').value = '1';
+        document.getElementById('map-notes').value = '';
+    }
+    document.getElementById('map-modal').style.display = 'flex';
+}
+
+function editMap(id) { openMapModal(id); }
+
+function closeMapModal() {
+    document.getElementById('map-modal').style.display = 'none';
+}
+
+async function saveMap() {
+    var btn = document.getElementById('btn-save-map');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    var editId = document.getElementById('map-edit-id').value;
+    var payload = {
+        vendor_id: parseInt(document.getElementById('map-vendor').value) || null,
+        vendor_sku: document.getElementById('map-sku').value.trim(),
+        vendor_item_name: document.getElementById('map-item-name').value.trim(),
+        vendor_unit: document.getElementById('map-unit').value,
+        vendor_unit_quantity: parseFloat(document.getElementById('map-qty').value) || 1,
+        notes: document.getElementById('map-notes').value.trim(),
+    };
+
+    if (!payload.vendor_id) {
+        alert('Please select a vendor');
+        btn.disabled = false;
+        btn.textContent = 'Save';
+        return;
+    }
+
+    try {
+        var url, method;
+        if (editId) {
+            url = '/stock/api/items/' + ITEM_ID + '/vendor-maps/' + editId;
+            method = 'PUT';
+        } else {
+            url = '/stock/api/items/' + ITEM_ID + '/vendor-maps';
+            method = 'POST';
+        }
+        var resp = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+            var err = await resp.json();
+            alert(err.error || 'Failed to save');
+            btn.disabled = false;
+            btn.textContent = 'Save';
+            return;
+        }
+        closeMapModal();
+        loadVendorMaps();
+    } catch(e) {
+        alert('Failed to save');
+    }
+    btn.disabled = false;
+    btn.textContent = 'Save';
+}
+
+async function deleteMap(id) {
+    if (!confirm('Remove this vendor SKU mapping?')) return;
+    try {
+        var resp = await fetch('/stock/api/items/' + ITEM_ID + '/vendor-maps/' + id, { method: 'DELETE' });
+        if (!resp.ok) { alert('Failed to delete'); return; }
+        loadVendorMaps();
+    } catch(e) { alert('Failed to delete'); }
+}
+
+// ── Utilities ────────────────────────────────────────────────
 
 function escHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
 function formatDate(dateStr) {

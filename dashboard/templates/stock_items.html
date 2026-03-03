@@ -238,8 +238,10 @@ function renderItems(items) {
         html += '<td>' + escHtml(item.vendor_name || '--') + '</td>';
         html += '<td>' + escHtml(item.manufacturer || '--') + '</td>';
         html += '<td>' + escHtml(item.category || '--') + '</td>';
-        html += '<td>' + escHtml(item.unit || 'EACH') + '</td>';
-        html += '<td style="text-align:right;">' + (item.pieces_per_unit || 1) + '</td>';
+        html += '<td>' + escHtml(item.unit_label || item.unit || 'EA') + '</td>';
+        var ppuStr = (item.pieces_per_unit || 1);
+        if (ppuStr > 1) ppuStr += ' per ' + escHtml(item.pack_label || 'BOX');
+        html += '<td style="text-align:right;">' + ppuStr + '</td>';
         html += '<td style="text-align:right;">' + (item.reorder_point || 0) + '</td>';
         html += '<td><code style="font-size:11px;">' + escHtml(item.qr_code_id || '') + '</code></td>';
         if (CAN_EDIT) {

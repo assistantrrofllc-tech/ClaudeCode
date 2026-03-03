@@ -299,6 +299,7 @@ def api_inventory():
         query = """
             SELECT si.id, si.name, si.sku, si.manufacturer, si.category, si.unit,
                    si.reorder_point, si.qr_code_id, si.image_path, si.vendor_id,
+                   si.pieces_per_unit, si.unit_label, si.pack_label,
                    inv.quantity, inv.section, inv.shop_id,
                    sh.name AS shop_name,
                    v.name AS vendor_name
@@ -386,8 +387,9 @@ def api_items_create():
 
         cursor = db.execute(
             """INSERT INTO stock_items (name, sku, manufacturer, category, unit,
-                                        pieces_per_unit, reorder_point, qr_code_id, vendor_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                        pieces_per_unit, reorder_point, qr_code_id, vendor_id,
+                                        unit_label, pack_label)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 name,
                 (data.get("sku") or "").strip(),
@@ -398,6 +400,8 @@ def api_items_create():
                 data.get("reorder_point", 0),
                 qr_code_id,
                 vendor_id,
+                (data.get("unit_label") or "EA").strip().upper(),
+                (data.get("pack_label") or "BOX").strip().upper(),
             ),
         )
         db.commit()
@@ -427,7 +431,8 @@ def api_items_update(item_id):
         fields = []
         values = []
         for col in ("name", "sku", "manufacturer", "category", "unit",
-                     "pieces_per_unit", "reorder_point", "vendor_id"):
+                     "pieces_per_unit", "reorder_point", "vendor_id",
+                     "unit_label", "pack_label"):
             if col in data:
                 fields.append(f"{col} = ?")
                 val = data[col]
@@ -790,6 +795,298 @@ def api_item_detail(item_id):
             "total_shop_qty": int(total_shop_qty),
             "total_project_qty": int(total_project_qty),
         })
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Vendor-Item Mapping
+# ══════════════════════════════════════════════════════════════
+
+
+@stock_bp.route("/stock/api/items/<int:item_id>/vendor-maps", methods=["GET"])
+@login_required
+@require_stock_access
+def api_vendor_maps_list(item_id):
+    """List all vendor mappings for an item."""
+    db = get_db()
+    try:
+        rows = db.execute("""
+            SELECT vim.*, v.name AS vendor_name
+            FROM vendor_item_map vim
+            JOIN vendors v ON v.id = vim.vendor_id
+            WHERE vim.item_id = ?
+            ORDER BY v.name
+        """, (item_id,)).fetchall()
+        return jsonify({"maps": [dict(r) for r in rows]})
+    finally:
+        db.close()
+
+
+@stock_bp.route("/stock/api/items/<int:item_id>/vendor-maps", methods=["POST"])
+@login_required
+@require_stock_access
+def api_vendor_maps_create(item_id):
+    """Create a vendor mapping for an item."""
+    data = request.get_json(silent=True) or {}
+    vendor_id = data.get("vendor_id")
+    if not vendor_id:
+        return jsonify({"error": "vendor_id is required"}), 400
+
+    db = get_db()
+    try:
+        # Verify item exists
+        if not db.execute("SELECT id FROM stock_items WHERE id = ?", (item_id,)).fetchone():
+            abort(404)
+        # Verify vendor exists
+        if not db.execute("SELECT id FROM vendors WHERE id = ?", (vendor_id,)).fetchone():
+            return jsonify({"error": "Vendor not found"}), 404
+
+        # Check for existing mapping
+        existing = db.execute(
+            "SELECT id FROM vendor_item_map WHERE vendor_id = ? AND item_id = ?",
+            (vendor_id, item_id)
+        ).fetchone()
+        if existing:
+            return jsonify({"error": "Mapping already exists for this vendor"}), 409
+
+        cursor = db.execute("""
+            INSERT INTO vendor_item_map (vendor_id, item_id, vendor_sku, vendor_item_name,
+                                         vendor_unit, vendor_unit_quantity, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            int(vendor_id),
+            item_id,
+            (data.get("vendor_sku") or "").strip(),
+            (data.get("vendor_item_name") or "").strip(),
+            (data.get("vendor_unit") or "EA").strip().upper(),
+            float(data.get("vendor_unit_quantity", 1)),
+            (data.get("notes") or "").strip(),
+        ))
+        db.commit()
+        return jsonify({"id": cursor.lastrowid}), 201
+    finally:
+        db.close()
+
+
+@stock_bp.route("/stock/api/items/<int:item_id>/vendor-maps/<int:map_id>", methods=["PUT"])
+@login_required
+@require_stock_access
+def api_vendor_maps_update(item_id, map_id):
+    """Update a vendor mapping."""
+    db = get_db()
+    try:
+        row = db.execute(
+            "SELECT id FROM vendor_item_map WHERE id = ? AND item_id = ?",
+            (map_id, item_id)
+        ).fetchone()
+        if not row:
+            abort(404)
+
+        data = request.get_json(silent=True) or {}
+        fields = []
+        values = []
+        for col in ("vendor_sku", "vendor_item_name", "vendor_unit",
+                     "vendor_unit_quantity", "notes"):
+            if col in data:
+                fields.append(f"{col} = ?")
+                val = data[col]
+                if col == "vendor_unit_quantity":
+                    val = float(val) if val else 1
+                elif col == "vendor_unit":
+                    val = (val or "EA").strip().upper()
+                values.append(val)
+
+        if not fields:
+            return jsonify({"error": "No fields to update"}), 400
+
+        fields.append("updated_at = datetime('now')")
+        values.append(map_id)
+        db.execute(
+            f"UPDATE vendor_item_map SET {', '.join(fields)} WHERE id = ?",
+            values,
+        )
+        db.commit()
+        return jsonify({"ok": True})
+    finally:
+        db.close()
+
+
+@stock_bp.route("/stock/api/items/<int:item_id>/vendor-maps/<int:map_id>", methods=["DELETE"])
+@login_required
+@require_stock_access
+def api_vendor_maps_delete(item_id, map_id):
+    """Delete a vendor mapping."""
+    db = get_db()
+    try:
+        row = db.execute(
+            "SELECT id FROM vendor_item_map WHERE id = ? AND item_id = ?",
+            (map_id, item_id)
+        ).fetchone()
+        if not row:
+            abort(404)
+
+        db.execute("DELETE FROM vendor_item_map WHERE id = ?", (map_id,))
+        db.commit()
+        return jsonify({"ok": True})
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Project Aliases
+# ══════════════════════════════════════════════════════════════
+
+
+@stock_bp.route("/stock/api/projects/<int:project_id>/aliases", methods=["GET"])
+@login_required
+@require_stock_access
+def api_project_aliases_list(project_id):
+    """List aliases for a project."""
+    db = get_db()
+    try:
+        rows = db.execute(
+            "SELECT * FROM project_aliases WHERE project_id = ? ORDER BY alias",
+            (project_id,)
+        ).fetchall()
+        return jsonify({"aliases": [dict(r) for r in rows]})
+    finally:
+        db.close()
+
+
+@stock_bp.route("/stock/api/projects/<int:project_id>/aliases", methods=["POST"])
+@login_required
+@require_stock_access
+def api_project_aliases_create(project_id):
+    """Add an alias for a project."""
+    data = request.get_json(silent=True) or {}
+    alias = (data.get("alias") or "").strip()
+    if not alias:
+        return jsonify({"error": "Alias is required"}), 400
+
+    db = get_db()
+    try:
+        if not db.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone():
+            abort(404)
+
+        # Check uniqueness
+        existing = db.execute(
+            "SELECT id, project_id FROM project_aliases WHERE alias = ?", (alias,)
+        ).fetchone()
+        if existing:
+            return jsonify({"error": f"Alias already used by project {existing['project_id']}"}), 409
+
+        cursor = db.execute(
+            "INSERT INTO project_aliases (project_id, alias, source) VALUES (?, ?, ?)",
+            (project_id, alias, (data.get("source") or "").strip()),
+        )
+        db.commit()
+        return jsonify({"id": cursor.lastrowid}), 201
+    finally:
+        db.close()
+
+
+@stock_bp.route("/stock/api/projects/<int:project_id>/aliases/<int:alias_id>", methods=["DELETE"])
+@login_required
+@require_stock_access
+def api_project_aliases_delete(project_id, alias_id):
+    """Remove an alias for a project."""
+    db = get_db()
+    try:
+        row = db.execute(
+            "SELECT id FROM project_aliases WHERE id = ? AND project_id = ?",
+            (alias_id, project_id)
+        ).fetchone()
+        if not row:
+            abort(404)
+
+        db.execute("DELETE FROM project_aliases WHERE id = ?", (alias_id,))
+        db.commit()
+        return jsonify({"ok": True})
+    finally:
+        db.close()
+
+
+@stock_bp.route("/stock/api/projects/match", methods=["POST"])
+@login_required
+@require_stock_access
+def api_project_match():
+    """Match a string to a project. Returns match or candidates.
+
+    Priority: exact project_code > exact name > exact alias > fuzzy > no match.
+    """
+    data = request.get_json(silent=True) or {}
+    query_str = (data.get("query") or "").strip()
+    if not query_str:
+        return jsonify({"error": "Query is required"}), 400
+
+    db = get_db()
+    try:
+        query_upper = query_str.upper()
+
+        # 1. Exact match on project name (case-insensitive)
+        row = db.execute(
+            "SELECT id, name FROM projects WHERE UPPER(name) = ?", (query_upper,)
+        ).fetchone()
+        if row:
+            return jsonify({"match": dict(row), "match_type": "exact_name"})
+
+        # 2. Exact match on alias (case-insensitive)
+        row = db.execute("""
+            SELECT pa.project_id, p.name
+            FROM project_aliases pa
+            JOIN projects p ON p.id = pa.project_id
+            WHERE UPPER(pa.alias) = ?
+        """, (query_upper,)).fetchone()
+        if row:
+            return jsonify({"match": {"id": row["project_id"], "name": row["name"]}, "match_type": "alias"})
+
+        # 3. Fuzzy match
+        try:
+            from thefuzz import fuzz
+        except ImportError:
+            return jsonify({"match": None, "candidates": [], "match_type": "none"})
+
+        projects = db.execute("SELECT id, name FROM projects WHERE status = 'active'").fetchall()
+        aliases = db.execute("""
+            SELECT pa.alias, pa.project_id, p.name
+            FROM project_aliases pa
+            JOIN projects p ON p.id = pa.project_id
+        """).fetchall()
+
+        best_score = 0
+        best_match = None
+        candidates = []
+
+        for p in projects:
+            score = fuzz.ratio(query_upper, p["name"].upper())
+            if score > best_score:
+                best_score = score
+                best_match = {"id": p["id"], "name": p["name"], "score": score}
+            if score >= 60:
+                candidates.append({"id": p["id"], "name": p["name"], "score": score})
+
+        for a in aliases:
+            score = fuzz.ratio(query_upper, a["alias"].upper())
+            if score > best_score:
+                best_score = score
+                best_match = {"id": a["project_id"], "name": a["name"], "score": score}
+            if score >= 60:
+                candidates.append({"id": a["project_id"], "name": a["name"], "score": score})
+
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+        # Deduplicate
+        seen = set()
+        unique_candidates = []
+        for c in candidates:
+            if c["id"] not in seen:
+                seen.add(c["id"])
+                unique_candidates.append(c)
+
+        if best_score >= 80 and best_match:
+            return jsonify({"match": best_match, "match_type": "fuzzy", "candidates": unique_candidates[:5]})
+
+        return jsonify({"match": None, "candidates": unique_candidates[:5], "match_type": "none"})
     finally:
         db.close()
 

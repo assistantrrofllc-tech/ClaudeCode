@@ -478,6 +478,32 @@ def api_vendor_items(vendor_id):
 
 
 # ══════════════════════════════════════════════════════════════
+# API — Vendor-Item Mappings (vendor-side view)
+# ══════════════════════════════════════════════════════════════
+
+
+@vendors_bp.route("/api/vendors/<int:vendor_id>/item-maps", methods=["GET"])
+@login_required
+def api_vendor_item_maps(vendor_id):
+    """All item mappings for a vendor — vendor SKUs, unit conversions."""
+    db = get_db()
+    try:
+        rows = db.execute("""
+            SELECT vim.*, si.name AS item_name, si.category, si.unit AS item_unit,
+                   si.pieces_per_unit, si.unit_label, si.pack_label
+            FROM vendor_item_map vim
+            JOIN stock_items si ON si.id = vim.item_id
+            WHERE vim.vendor_id = ?
+            ORDER BY si.name
+        """, (vendor_id,)).fetchall()
+        return jsonify({"maps": [dict(r) for r in rows]})
+    except Exception:
+        return jsonify({"maps": []})
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
 # API — Cross-Module: Reorders
 # ══════════════════════════════════════════════════════════════
 

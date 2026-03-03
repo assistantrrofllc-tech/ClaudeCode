@@ -72,6 +72,8 @@ def setup_test_db():
         vendor_id INTEGER REFERENCES vendors(id),
         image_path TEXT,
         asset_id INTEGER,
+        unit_label TEXT DEFAULT 'EA',
+        pack_label TEXT DEFAULT 'BOX',
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -156,6 +158,27 @@ def setup_test_db():
         notes TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS vendor_item_map (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+        item_id INTEGER NOT NULL REFERENCES stock_items(id),
+        vendor_sku TEXT,
+        vendor_item_name TEXT,
+        vendor_unit TEXT NOT NULL DEFAULT 'EA',
+        vendor_unit_quantity REAL NOT NULL DEFAULT 1,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(vendor_id, item_id)
+    );
+    CREATE TABLE IF NOT EXISTS project_aliases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        alias TEXT NOT NULL,
+        source TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(alias)
     );
     """)
 
@@ -779,3 +802,211 @@ def test_update_item_vendor():
 
     resp2 = client.get("/stock/api/items/2/detail")
     assert resp2.get_json()["item"]["vendor_name"] == "Acme Supply"
+
+
+# ══════════════════════════════════════════════════════════════
+# Vendor-Item Mapping tests
+# ══════════════════════════════════════════════════════════════
+
+
+def test_vendor_map_crud():
+    """Create, list, update, delete vendor-item mappings."""
+    setup_test_db()
+    client = make_client()
+
+    # Create
+    resp = client.post("/stock/api/items/1/vendor-maps", json={
+        "vendor_id": 1,
+        "vendor_sku": "APS500SBZ130",
+        "vendor_item_name": "APS500 Dark Bronze",
+        "vendor_unit": "BOX",
+        "vendor_unit_quantity": 24,
+        "notes": "Lead time 3 days",
+    })
+    assert resp.status_code == 201
+    map_id = resp.get_json()["id"]
+
+    # List
+    resp = client.get("/stock/api/items/1/vendor-maps")
+    assert resp.status_code == 200
+    maps = resp.get_json()["maps"]
+    assert len(maps) == 1
+    assert maps[0]["vendor_sku"] == "APS500SBZ130"
+    assert maps[0]["vendor_unit"] == "BOX"
+    assert maps[0]["vendor_unit_quantity"] == 24
+    assert maps[0]["vendor_name"] == "Acme Supply"
+
+    # Update
+    resp = client.put(f"/stock/api/items/1/vendor-maps/{map_id}", json={
+        "vendor_sku": "APS500-NEW",
+        "vendor_unit_quantity": 48,
+    })
+    assert resp.status_code == 200
+
+    # Verify update
+    resp = client.get("/stock/api/items/1/vendor-maps")
+    maps = resp.get_json()["maps"]
+    assert maps[0]["vendor_sku"] == "APS500-NEW"
+    assert maps[0]["vendor_unit_quantity"] == 48
+
+    # Delete
+    resp = client.delete(f"/stock/api/items/1/vendor-maps/{map_id}")
+    assert resp.status_code == 200
+
+    resp = client.get("/stock/api/items/1/vendor-maps")
+    assert len(resp.get_json()["maps"]) == 0
+
+
+def test_vendor_map_duplicate_rejected():
+    """Cannot create two mappings for same vendor+item."""
+    setup_test_db()
+    client = make_client()
+    client.post("/stock/api/items/1/vendor-maps", json={"vendor_id": 1})
+    resp = client.post("/stock/api/items/1/vendor-maps", json={"vendor_id": 1})
+    assert resp.status_code == 409
+
+
+def test_vendor_map_requires_vendor():
+    """vendor_id is required."""
+    setup_test_db()
+    client = make_client()
+    resp = client.post("/stock/api/items/1/vendor-maps", json={"vendor_sku": "X"})
+    assert resp.status_code == 400
+
+
+def test_vendor_map_nonexistent_item():
+    """404 for non-existent item."""
+    setup_test_db()
+    client = make_client()
+    resp = client.post("/stock/api/items/999/vendor-maps", json={"vendor_id": 1})
+    assert resp.status_code == 404
+
+
+# ══════════════════════════════════════════════════════════════
+# Project Aliases tests
+# ══════════════════════════════════════════════════════════════
+
+
+def test_project_alias_crud():
+    """Create, list, delete project aliases."""
+    setup_test_db()
+    client = make_client()
+
+    # Create
+    resp = client.post("/stock/api/projects/1/aliases", json={
+        "alias": "SPERROW",
+        "source": "Triangle Fastener packing slip",
+    })
+    assert resp.status_code == 201
+    alias_id = resp.get_json()["id"]
+
+    # List
+    resp = client.get("/stock/api/projects/1/aliases")
+    assert resp.status_code == 200
+    aliases = resp.get_json()["aliases"]
+    assert len(aliases) == 1
+    assert aliases[0]["alias"] == "SPERROW"
+
+    # Delete
+    resp = client.delete(f"/stock/api/projects/1/aliases/{alias_id}")
+    assert resp.status_code == 200
+
+    resp = client.get("/stock/api/projects/1/aliases")
+    assert len(resp.get_json()["aliases"]) == 0
+
+
+def test_project_alias_unique():
+    """Cannot reuse the same alias for another project."""
+    setup_test_db()
+    client = make_client()
+    client.post("/stock/api/projects/1/aliases", json={"alias": "SPERROW"})
+    resp = client.post("/stock/api/projects/1/aliases", json={"alias": "SPERROW"})
+    assert resp.status_code == 409
+
+
+def test_project_match_exact_name():
+    """Match by exact project name."""
+    setup_test_db()
+    client = make_client()
+    resp = client.post("/stock/api/projects/match", json={"query": "Test Project"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["match"]["id"] == 1
+    assert data["match_type"] == "exact_name"
+
+
+def test_project_match_by_alias():
+    """Match by alias."""
+    setup_test_db()
+    client = make_client()
+    client.post("/stock/api/projects/1/aliases", json={"alias": "SPERROW"})
+    resp = client.post("/stock/api/projects/match", json={"query": "SPERROW"})
+    data = resp.get_json()
+    assert data["match"]["id"] == 1
+    assert data["match_type"] == "alias"
+
+
+def test_project_match_fuzzy():
+    """Fuzzy match with high enough score."""
+    setup_test_db()
+    client = make_client()
+    resp = client.post("/stock/api/projects/match", json={"query": "Test Projct"})
+    data = resp.get_json()
+    # Should fuzzy match or return candidates
+    assert data["match_type"] in ("fuzzy", "none")
+    if data["match_type"] == "fuzzy":
+        assert data["match"]["id"] == 1
+
+
+# ══════════════════════════════════════════════════════════════
+# Dual Unit Display tests
+# ══════════════════════════════════════════════════════════════
+
+
+def test_item_unit_label_saved():
+    """unit_label and pack_label are persisted."""
+    setup_test_db()
+    client = make_client()
+    resp = client.put("/stock/api/items/1", json={
+        "unit_label": "TUBE",
+        "pack_label": "CASE",
+        "pieces_per_unit": 24,
+    })
+    assert resp.status_code == 200
+
+    resp = client.get("/stock/api/items/1/detail")
+    item = resp.get_json()["item"]
+    assert item["unit_label"] == "TUBE"
+    assert item["pack_label"] == "CASE"
+    assert item["pieces_per_unit"] == 24
+
+
+def test_inventory_api_returns_unit_fields():
+    """Inventory API returns unit_label and pack_label."""
+    setup_test_db()
+    client = make_client()
+    resp = client.get("/stock/api/inventory")
+    items = resp.get_json()["items"]
+    assert len(items) > 0
+    # Default values
+    assert "unit_label" in items[0]
+    assert "pack_label" in items[0]
+
+
+def test_create_item_with_unit_labels():
+    """Create item with unit_label and pack_label."""
+    setup_test_db()
+    client = make_client()
+    resp = client.post("/stock/api/items", json={
+        "name": "Sealant Tubes",
+        "unit_label": "TUBE",
+        "pack_label": "BOX",
+        "pieces_per_unit": 24,
+    })
+    assert resp.status_code == 201
+    item_id = resp.get_json()["id"]
+
+    resp = client.get(f"/stock/api/items/{item_id}/detail")
+    item = resp.get_json()["item"]
+    assert item["unit_label"] == "TUBE"
+    assert item["pack_label"] == "BOX"
