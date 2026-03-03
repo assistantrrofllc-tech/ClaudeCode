@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+{% block title %}CrewInventory — Scanner{% endblock %}
+
+{% block head %}
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Scan &amp; Checkout</h1>
+</div>
+
+<div class="scanner-layout">
+    <!-- Left: Scanner + Cart -->
+    <div class="scanner-main">
+        <!-- Shop Selector -->
+        <div class="scanner-section">
+            <label class="scanner-label">Shop</label>
+            <select id="shop-select" class="scanner-select" onchange="onShopChange()">
+                <option value="">-- Select Shop --</option>
+            </select>
+        </div>
+
+        <!-- Employee Picker -->
+        <div class="scanner-section">
+            <label class="scanner-label">Employee</label>
+            <div style="position:relative;">
+                <input type="text" id="emp-search" class="scanner-input" placeholder="Search employee..." oninput="searchEmployees()" autocomplete="off">
+                <input type="hidden" id="emp-id">
+                <div id="emp-dropdown" class="scanner-dropdown" style="display:none;"></div>
+            </div>
+            <div id="emp-selected" style="display:none; margin-top:6px; font-size:13px; font-weight:500;"></div>
+        </div>
+
+        <!-- Project Picker -->
+        <div class="scanner-section">
+            <label class="scanner-label">Project</label>
+            <select id="project-select" class="scanner-select">
+                <option value="">-- Select Project --</option>
+            </select>
+        </div>
+
+        <!-- QR Scanner -->
+        <div class="scanner-section">
+            <label class="scanner-label">Scan QR Code</label>
+            <div id="qr-reader" style="width:100%; max-width:400px;"></div>
+            <div id="scan-status" style="margin-top:8px; font-size:13px; color:var(--text-muted);"></div>
+        </div>
+
+        <!-- Manual Lookup -->
+        <div class="scanner-section">
+            <label class="scanner-label">Manual Item Lookup</label>
+            <div style="display:flex; gap:8px;">
+                <input type="text" id="manual-search" class="scanner-input" placeholder="Search item by name..." style="flex:1;">
+                <button class="btn btn--primary" onclick="manualSearch()">Search</button>
+            </div>
+            <div id="manual-results" class="scanner-dropdown" style="display:none; position:relative;"></div>
+        </div>
+
+        <!-- Cart -->
+        <div class="scanner-section">
+            <label class="scanner-label">Cart (<span id="cart-count">0</span> items)</label>
+            <div id="cart-empty" style="color:var(--text-muted); font-size:13px;">Scan or search items to add to cart.</div>
+            <div id="cart-list"></div>
+        </div>
+
+        <!-- Checkout Button -->
+        <div class="scanner-section">
+            <button class="btn btn--primary" id="btn-checkout" onclick="checkout()" disabled style="width:100%; padding:14px; font-size:16px;">
+                Checkout
+            </button>
+            <div id="checkout-msg" style="margin-top:8px; text-align:center;"></div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.scanner-layout { max-width:600px; }
+.scanner-section { margin-bottom:20px; }
+.scanner-label { display:block; font-size:13px; font-weight:600; margin-bottom:6px; color:#374151; }
+.scanner-select, .scanner-input {
+    width:100%; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px;
+    font-size:14px; font-family:inherit; background:#fff;
+}
+.scanner-select:focus, .scanner-input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+.scanner-dropdown {
+    position:absolute; left:0; right:0; top:100%; z-index:50;
+    background:#fff; border:1px solid #d1d5db; border-radius:8px;
+    max-height:200px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,.1);
+}
+.scanner-dropdown__item {
+    padding:10px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid #f3f4f6;
+}
+.scanner-dropdown__item:hover { background:#f3f4f6; }
+.scanner-dropdown__item:last-child { border-bottom:none; }
+.cart-item {
+    display:flex; align-items:center; gap:10px; padding:10px 12px;
+    border:1px solid #e5e7eb; border-radius:8px; margin-bottom:8px; background:#fff;
+}
+.cart-item__info { flex:1; min-width:0; }
+.cart-item__name { font-weight:600; font-size:14px; }
+.cart-item__meta { font-size:12px; color:var(--text-muted); }
+.cart-item__qty { display:flex; align-items:center; gap:6px; }
+.cart-item__qty button { width:28px; height:28px; border:1px solid #d1d5db; border-radius:4px; background:#fff; cursor:pointer; font-size:16px; line-height:1; }
+.cart-item__qty button:hover { background:#f3f4f6; }
+.cart-item__qty span { font-weight:600; min-width:24px; text-align:center; }
+.cart-item__remove { color:#dc2626; cursor:pointer; font-size:18px; padding:0 4px; border:none; background:none; }
+.checkout-success { background:#ecfdf5; border:1px solid #6ee7b7; border-radius:8px; padding:16px; text-align:center; color:#065f46; font-weight:500; }
+</style>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+let cart = JSON.parse(sessionStorage.getItem('stockCart') || '[]');
+let shops = [];
+let html5QrCode = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadShops();
+    loadProjects();
+    renderCart();
+    initScanner();
+});
+
+// ── Data Loading ──
+
+async function loadShops() {
+    try {
+        var resp = await fetch('/stock/api/shops');
+        var data = await resp.json();
+        shops = data.shops || [];
+        var sel = document.getElementById('shop-select');
+        shops.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name;
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+}
+
+async function loadProjects() {
+    try {
+        var resp = await fetch('/stock/api/projects');
+        var data = await resp.json();
+        var sel = document.getElementById('project-select');
+        (data.projects || []).forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name + (p.project_code ? ' (' + p.project_code + ')' : '');
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+}
+
+function onShopChange() {
+    updateCheckoutBtn();
+}
+
+// ── Employee Search ──
+
+let empTimeout;
+async function searchEmployees() {
+    clearTimeout(empTimeout);
+    var query = document.getElementById('emp-search').value.trim();
+    if (query.length < 2) {
+        document.getElementById('emp-dropdown').style.display = 'none';
+        return;
+    }
+    empTimeout = setTimeout(async function() {
+        try {
+            var resp = await fetch('/stock/api/employees?search=' + encodeURIComponent(query));
+            var data = await resp.json();
+            var dd = document.getElementById('emp-dropdown');
+            if ((data.employees || []).length === 0) {
+                dd.style.display = 'none';
+                return;
+            }
+            var html = '';
+            data.employees.forEach(function(e) {
+                html += '<div class="scanner-dropdown__item" onclick="selectEmployee(' + e.id + ', \'' + escAttr(e.full_name || e.first_name) + '\')">';
+                html += escHtml(e.full_name || e.first_name);
+                if (e.role) html += ' <span style="color:var(--text-muted);">(' + escHtml(e.role) + ')</span>';
+                html += '</div>';
+            });
+            dd.innerHTML = html;
+            dd.style.display = 'block';
+        } catch(e) {}
+    }, 300);
+}
+
+function selectEmployee(id, name) {
+    document.getElementById('emp-id').value = id;
+    document.getElementById('emp-search').value = name;
+    document.getElementById('emp-dropdown').style.display = 'none';
+    document.getElementById('emp-selected').style.display = 'block';
+    document.getElementById('emp-selected').textContent = 'Selected: ' + name;
+    updateCheckoutBtn();
+}
+
+// ── QR Scanner ──
+
+function initScanner() {
+    try {
+        html5QrCode = new Html5Qrcode("qr-reader");
+        html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            onScanSuccess,
+            function() {}
+        ).catch(function(err) {
+            document.getElementById('scan-status').textContent = 'Camera not available. Use manual search below.';
+        });
+    } catch(e) {
+        document.getElementById('scan-status').textContent = 'QR scanner not supported in this browser.';
+    }
+}
+
+function onScanSuccess(decodedText) {
+    // Parse crewstock:item:{qr_code_id}
+    var match = decodedText.match(/^crewstock:item:(.+)$/);
+    if (!match) {
+        document.getElementById('scan-status').textContent = 'Unknown QR code format: ' + decodedText;
+        return;
+    }
+    var qrId = match[1];
+    document.getElementById('scan-status').textContent = 'Looking up item...';
+    lookupAndAddItem(qrId);
+}
+
+async function lookupAndAddItem(qrCodeId) {
+    try {
+        var resp = await fetch('/stock/api/lookup?qr=' + encodeURIComponent(qrCodeId));
+        if (!resp.ok) {
+            var err = await resp.json();
+            document.getElementById('scan-status').textContent = err.error || 'Item not found';
+            return;
+        }
+        var data = await resp.json();
+        var item = data.item;
+        addToCart(item.id, item.name, item.unit || 'EACH', item.sku || '');
+        document.getElementById('scan-status').textContent = 'Added: ' + item.name;
+    } catch(e) {
+        document.getElementById('scan-status').textContent = 'Failed to look up item';
+    }
+}
+
+// ── Manual Search ──
+
+async function manualSearch() {
+    var query = document.getElementById('manual-search').value.trim();
+    if (!query) return;
+
+    try {
+        var resp = await fetch('/stock/api/items?search=' + encodeURIComponent(query));
+        var data = await resp.json();
+        var results = data.items || [];
+        var container = document.getElementById('manual-results');
+
+        if (results.length === 0) {
+            container.innerHTML = '<div class="scanner-dropdown__item" style="color:var(--text-muted);">No items found.</div>';
+            container.style.display = 'block';
+            return;
+        }
+
+        var html = '';
+        results.forEach(function(item) {
+            html += '<div class="scanner-dropdown__item" onclick="addToCart(' + item.id + ', \'' + escAttr(item.name) + '\', \'' + escAttr(item.unit || 'EACH') + '\', \'' + escAttr(item.sku || '') + '\'); document.getElementById(\'manual-results\').style.display=\'none\';">';
+            html += '<strong>' + escHtml(item.name) + '</strong>';
+            if (item.sku) html += ' <span style="color:var(--text-muted);">(SKU: ' + escHtml(item.sku) + ')</span>';
+            html += '</div>';
+        });
+        container.innerHTML = html;
+        container.style.display = 'block';
+    } catch(e) {
+        alert('Search failed');
+    }
+}
+
+// ── Cart Management ──
+
+function addToCart(itemId, name, unit, sku) {
+    var existing = cart.find(function(c) { return c.item_id === itemId; });
+    if (existing) {
+        existing.quantity++;
+    } else {
+        cart.push({ item_id: itemId, name: name, unit: unit, sku: sku, quantity: 1 });
+    }
+    saveCart();
+    renderCart();
+}
+
+function changeQty(itemId, delta) {
+    var item = cart.find(function(c) { return c.item_id === itemId; });
+    if (!item) return;
+    item.quantity += delta;
+    if (item.quantity <= 0) {
+        cart = cart.filter(function(c) { return c.item_id !== itemId; });
+    }
+    saveCart();
+    renderCart();
+}
+
+function removeFromCart(itemId) {
+    cart = cart.filter(function(c) { return c.item_id !== itemId; });
+    saveCart();
+    renderCart();
+}
+
+function saveCart() {
+    sessionStorage.setItem('stockCart', JSON.stringify(cart));
+}
+
+function renderCart() {
+    var empty = document.getElementById('cart-empty');
+    var list = document.getElementById('cart-list');
+    document.getElementById('cart-count').textContent = cart.length;
+
+    if (cart.length === 0) {
+        empty.style.display = 'block';
+        list.innerHTML = '';
+        updateCheckoutBtn();
+        return;
+    }
+
+    empty.style.display = 'none';
+    var html = '';
+    cart.forEach(function(item) {
+        html += '<div class="cart-item">';
+        html += '<div class="cart-item__info">';
+        html += '<div class="cart-item__name">' + escHtml(item.name) + '</div>';
+        html += '<div class="cart-item__meta">' + escHtml(item.unit);
+        if (item.sku) html += ' &middot; SKU: ' + escHtml(item.sku);
+        html += '</div>';
+        html += '</div>';
+        html += '<div class="cart-item__qty">';
+        html += '<button onclick="changeQty(' + item.item_id + ', -1)">-</button>';
+        html += '<span>' + item.quantity + '</span>';
+        html += '<button onclick="changeQty(' + item.item_id + ', 1)">+</button>';
+        html += '</div>';
+        html += '<button class="cart-item__remove" onclick="removeFromCart(' + item.item_id + ')" title="Remove">&times;</button>';
+        html += '</div>';
+    });
+    list.innerHTML = html;
+    updateCheckoutBtn();
+}
+
+function updateCheckoutBtn() {
+    var shopId = document.getElementById('shop-select').value;
+    var empId = document.getElementById('emp-id').value;
+    var projectId = document.getElementById('project-select').value;
+    var btn = document.getElementById('btn-checkout');
+    btn.disabled = !(shopId && empId && projectId && cart.length > 0);
+}
+
+// Listen for selection changes
+document.addEventListener('change', function(e) {
+    if (e.target.id === 'shop-select' || e.target.id === 'project-select') {
+        updateCheckoutBtn();
+    }
+});
+
+// ── Checkout ──
+
+async function checkout() {
+    var shopId = parseInt(document.getElementById('shop-select').value);
+    var empId = parseInt(document.getElementById('emp-id').value);
+    var projectId = parseInt(document.getElementById('project-select').value);
+
+    if (!shopId || !empId || !projectId || cart.length === 0) {
+        alert('Please select shop, employee, project, and add items to cart.');
+        return;
+    }
+
+    var btn = document.getElementById('btn-checkout');
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+
+    var payload = {
+        shop_id: shopId,
+        employee_id: empId,
+        project_id: projectId,
+        items: cart.map(function(c) { return { item_id: c.item_id, quantity: c.quantity }; }),
+    };
+
+    try {
+        var resp = await fetch('/stock/api/checkout', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+
+        var data = await resp.json();
+
+        if (!resp.ok) {
+            alert(data.error || 'Checkout failed');
+            btn.disabled = false;
+            btn.textContent = 'Checkout';
+            return;
+        }
+
+        // Success — clear cart and show confirmation
+        cart = [];
+        saveCart();
+        renderCart();
+
+        var msg = document.getElementById('checkout-msg');
+        msg.innerHTML = '<div class="checkout-success">Checkout complete! ' + data.item_count + ' item(s) assigned to project.</div>';
+        btn.textContent = 'Checkout';
+    } catch(e) {
+        alert('Checkout failed — network error');
+        btn.disabled = false;
+        btn.textContent = 'Checkout';
+    }
+}
+
+// ── Helpers ──
+
+function escHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function escAttr(str) {
+    if (!str) return '';
+    return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+</script>
+{% endblock %}

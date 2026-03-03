@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}CrewInventory — Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Inventory Dashboard</h1>
+</div>
+
+<!-- Summary Stats -->
+<div class="stats-row stats-row--4col" id="stock-stats">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-items">--</div>
+        <div class="stat-label">Total Items</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-qty">--</div>
+        <div class="stat-label">Total Qty in Shops</div>
+    </div>
+    <div class="stat-card" id="stat-low-card">
+        <div class="stat-value" id="stat-low">--</div>
+        <div class="stat-label">Low Stock</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-out">--</div>
+        <div class="stat-label">Checked Out</div>
+    </div>
+</div>
+
+<!-- Shop/Project Tabs + Search -->
+<div class="crew-filters">
+    <div class="search-bar">
+        <input type="text" id="inv-search" placeholder="Search items by name, supplier, or manufacturer..." oninput="loadInventory()">
+    </div>
+    <div class="crew-filter-pills" id="shop-tabs">
+        <button class="filter-btn active" data-shop="all" onclick="setShopTab('all', this)">All Shops</button>
+    </div>
+</div>
+
+<!-- Inventory Table -->
+<div id="inv-loading" class="loading">Loading inventory...</div>
+<div id="inv-empty" class="card" style="display:none; text-align:center; padding:48px 20px;">
+    <p style="color:var(--text-muted); font-size:16px;">No inventory items found.</p>
+</div>
+<div id="inv-table-wrap" style="display:none;">
+    <div style="overflow-x:auto;">
+        <table class="data-table" id="inv-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;"></th>
+                    <th>Item</th>
+                    <th>Supplier</th>
+                    <th>Manufacturer</th>
+                    <th>Category</th>
+                    <th>Shop</th>
+                    <th>Section</th>
+                    <th style="text-align:right;">Qty</th>
+                    <th>Unit</th>
+                    <th style="text-align:right;">Reorder Pt</th>
+                </tr>
+            </thead>
+            <tbody id="inv-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Projects with Inventory -->
+<div style="margin-top:32px;">
+    <h2 style="font-size:18px; margin-bottom:12px;">Projects with Materials</h2>
+    <div id="proj-loading" class="loading" style="display:none;">Loading projects...</div>
+    <div id="proj-empty" style="display:none; color:var(--text-muted); font-size:14px;">No projects have checked-out materials.</div>
+    <div id="proj-list" style="display:none;"></div>
+</div>
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e5e7eb; }
+.data-table th { font-weight:600; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; background:#f9fafb; position:sticky; top:0; }
+.data-table tr:hover { background:#f3f4f6; }
+.row-low-stock { background:#fef2f2 !important; }
+.row-low-stock:hover { background:#fee2e2 !important; }
+.badge-low { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#fee2e2; color:#991b1b; }
+.proj-card { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:8px; cursor:pointer; transition:background .15s; }
+.proj-card:hover { background:#f3f4f6; }
+.proj-card__name { font-weight:600; font-size:14px; }
+.proj-card__count { font-size:13px; color:var(--text-muted); }
+.item-thumb { width:32px; height:32px; object-fit:cover; border-radius:4px; border:1px solid #e5e7eb; }
+.item-link { color:inherit; text-decoration:none; }
+.item-link:hover { color:var(--color-primary, #2563eb); text-decoration:underline; }
+</style>
+<script>
+let shops = [];
+let currentShopId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboard();
+    loadProjects();
+});
+
+async function loadDashboard() {
+    try {
+        const resp = await fetch('/stock/api/dashboard');
+        const data = await resp.json();
+
+        document.getElementById('stat-items').textContent = data.total_items || 0;
+        document.getElementById('stat-qty').textContent = (data.total_qty || 0).toLocaleString();
+        document.getElementById('stat-low').textContent = data.low_stock || 0;
+        document.getElementById('stat-out').textContent = (data.checked_out || 0).toLocaleString();
+
+        if (data.low_stock > 0) {
+            document.getElementById('stat-low-card').classList.add('stat-card--alert', 'has-flags');
+        }
+
+        shops = data.shops || [];
+        renderShopTabs(data.projects_with_inventory || []);
+        loadInventory();
+    } catch(e) {
+        document.getElementById('inv-loading').textContent = 'Failed to load dashboard.';
+    }
+}
+
+function renderShopTabs(projects) {
+    var container = document.getElementById('shop-tabs');
+    var html = '<button class="filter-btn active" data-shop="all" onclick="setShopTab(\'all\', this)">All Shops</button>';
+    shops.forEach(function(s) {
+        html += '<button class="filter-btn" data-shop="' + s.id + '" onclick="setShopTab(' + s.id + ', this)">' + escHtml(s.name) + '</button>';
+    });
+    if (projects.length > 0) {
+        html += '<span style="display:inline-block; width:1px; height:24px; background:#d1d5db; margin:0 8px; vertical-align:middle;"></span>';
+        projects.forEach(function(p) {
+            html += '<button class="filter-btn" onclick="window.location=\'/stock/project/' + p.id + '\'">' + escHtml(p.name) + ' (' + Math.round(p.total_qty) + ')</button>';
+        });
+    }
+    container.innerHTML = html;
+}
+
+function setShopTab(shopId, btn) {
+    currentShopId = shopId === 'all' ? null : shopId;
+    document.querySelectorAll('#shop-tabs .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    loadInventory();
+}
+
+async function loadInventory() {
+    var loading = document.getElementById('inv-loading');
+    var empty = document.getElementById('inv-empty');
+    var wrap = document.getElementById('inv-table-wrap');
+
+    loading.style.display = 'block';
+    empty.style.display = 'none';
+    wrap.style.display = 'none';
+
+    var params = new URLSearchParams();
+    if (currentShopId) params.set('shop_id', currentShopId);
+    var search = document.getElementById('inv-search').value.trim();
+    if (search) params.set('search', search);
+
+    try {
+        var resp = await fetch('/stock/api/inventory?' + params.toString());
+        var data = await resp.json();
+        var items = data.items || [];
+
+        loading.style.display = 'none';
+
+        if (items.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        wrap.style.display = 'block';
+        var tbody = document.getElementById('inv-tbody');
+        var html = '';
+        items.forEach(function(item) {
+            var rowClass = item.low_stock ? 'row-low-stock' : '';
+            html += '<tr class="' + rowClass + '">';
+            // Thumbnail
+            html += '<td>';
+            if (item.image_path) {
+                html += '<img class="item-thumb" src="/stock/images/' + escHtml(item.image_path) + '" alt="">';
+            }
+            html += '</td>';
+            html += '<td><a class="item-link" href="/stock/items/' + item.id + '"><strong>' + escHtml(item.name) + '</strong></a></td>';
+            html += '<td>' + escHtml(item.vendor_name || '--') + '</td>';
+            html += '<td>' + escHtml(item.manufacturer || '--') + '</td>';
+            html += '<td>' + escHtml(item.category || '--') + '</td>';
+            html += '<td>' + escHtml(item.shop_name || '--') + '</td>';
+            html += '<td>' + escHtml(item.section || '--') + '</td>';
+            html += '<td style="text-align:right;">';
+            html += (item.quantity != null ? Number(item.quantity).toLocaleString() : '0');
+            if (item.low_stock) html += ' <span class="badge-low">LOW</span>';
+            html += '</td>';
+            html += '<td>' + escHtml(item.unit || '--') + '</td>';
+            html += '<td style="text-align:right;">' + (item.reorder_point || '--') + '</td>';
+            html += '</tr>';
+        });
+        tbody.innerHTML = html;
+    } catch(e) {
+        loading.textContent = 'Failed to load inventory.';
+    }
+}
+
+async function loadProjects() {
+    var loading = document.getElementById('proj-loading');
+    var empty = document.getElementById('proj-empty');
+    var list = document.getElementById('proj-list');
+
+    loading.style.display = 'block';
+
+    try {
+        var resp = await fetch('/stock/api/projects/with-inventory');
+        var data = await resp.json();
+        var projects = data.projects || [];
+
+        loading.style.display = 'none';
+
+        if (projects.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        list.style.display = 'block';
+        var html = '';
+        projects.forEach(function(p) {
+            html += '<div class="proj-card" onclick="window.location=\'/stock/project/' + p.id + '\'">';
+            html += '<div class="proj-card__name">' + escHtml(p.name) + '</div>';
+            html += '<div class="proj-card__count">' + Number(p.total_items).toLocaleString() + ' items</div>';
+            html += '</div>';
+        });
+        list.innerHTML = html;
+    } catch(e) {
+        loading.style.display = 'none';
+        empty.style.display = 'block';
+        empty.textContent = 'Failed to load projects.';
+    }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

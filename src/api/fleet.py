@@ -26,8 +26,7 @@ fleet_bp = Blueprint("fleet", __name__)
 MODULE_NAVS = {
     "crewasset": [
         {"id": "vehicles", "label": "Vehicles", "href": "/fleet/"},
-        {"id": "inventory", "label": "Inventory", "href": "#", "disabled": True},
-        {"id": "equipment", "label": "Equipment", "href": "#", "disabled": True},
+        {"id": "tools", "label": "Tools", "href": "/fleet/tools"},
     ],
 }
 
@@ -365,5 +364,40 @@ def delete_maintenance(record_id):
         db.commit()
 
         return jsonify({"message": "Maintenance record deleted"})
+    finally:
+        db.close()
+
+
+# ── Tools (CrewAsset cross-wire from CrewInventory) ───────────
+
+
+@fleet_bp.route("/fleet/tools")
+@login_required
+@require_module_access("crewasset")
+def fleet_tools():
+    """Tools list — assets synced from CrewInventory stock items."""
+    db = get_db()
+    try:
+        # Check if assets table exists
+        table_check = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='assets'"
+        ).fetchone()
+
+        tools = []
+        if table_check:
+            rows = db.execute("""
+                SELECT a.*, si.qr_code_id, v.name AS vendor_name
+                FROM assets a
+                LEFT JOIN stock_items si ON si.id = a.stock_item_id
+                LEFT JOIN vendors v ON v.id = a.vendor_id
+                ORDER BY a.name
+            """).fetchall()
+            tools = [dict(r) for r in rows]
+
+        return _render_module(
+            "fleet_tools.html",
+            active_subnav="tools",
+            tools=tools,
+        )
     finally:
         db.close()

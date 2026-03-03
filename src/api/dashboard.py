@@ -139,6 +139,22 @@ def home():
         ).fetchone()
         receipts_this_month = row["cnt"] if row else 0
 
+        # CrewInventory stats (safe — tables may not exist yet)
+        stock_item_count = 0
+        stock_low_count = 0
+        try:
+            row = db.execute("SELECT COUNT(*) as cnt FROM stock_items").fetchone()
+            stock_item_count = row["cnt"] if row else 0
+            row = db.execute("""
+                SELECT COUNT(*) AS cnt FROM stock_items si
+                WHERE si.reorder_point > 0
+                  AND (SELECT COALESCE(SUM(inv.quantity), 0) FROM shop_inventory inv
+                       WHERE inv.item_id = si.id) <= si.reorder_point
+            """).fetchone()
+            stock_low_count = row["cnt"] if row else 0
+        except Exception:
+            pass
+
         # Consolidated module stats dict for home page cards
         module_stats = {
             "crewledger": {
@@ -153,6 +169,10 @@ def home():
             "crewasset": {
                 "vehicle_count": vehicle_count,
             },
+            "crewinventory": {
+                "stock_item_count": stock_item_count,
+                "stock_low_count": stock_low_count,
+            },
         }
 
         return render_template(
@@ -163,6 +183,8 @@ def home():
             expiring_certs=expiring_certs,
             vehicle_count=vehicle_count,
             receipts_this_month=receipts_this_month,
+            stock_item_count=stock_item_count,
+            stock_low_count=stock_low_count,
             module_stats=module_stats,
         )
     finally:

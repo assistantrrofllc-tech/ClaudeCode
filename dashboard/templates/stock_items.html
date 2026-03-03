@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+{% block title %}CrewInventory — Items{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+    <h1>Item Catalog</h1>
+    <div style="display:flex; gap:8px;">
+        {% if can_edit %}
+        <button class="btn btn--secondary" id="btn-reorder" style="display:none;" onclick="startReorder()">Reorder Selected</button>
+        <button class="btn btn--primary" onclick="openItemModal()">+ Add Item</button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Search -->
+<div class="crew-filters">
+    <div class="search-bar">
+        <input type="text" id="item-search" placeholder="Search items..." oninput="debounceSearch()">
+    </div>
+</div>
+
+<!-- Items Table -->
+<div id="items-loading" class="loading">Loading items...</div>
+<div id="items-empty" class="card" style="display:none; text-align:center; padding:48px 20px;">
+    <p style="color:var(--text-muted); font-size:16px;">No items found. Add your first item above.</p>
+</div>
+<div id="items-table-wrap" style="display:none; overflow-x:auto;">
+    <table class="data-table" id="items-table">
+        <thead>
+            <tr>
+                {% if can_edit %}<th style="width:32px;"><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th>{% endif %}
+                <th style="width:40px;"></th>
+                <th>Name</th>
+                <th>Supplier</th>
+                <th>Manufacturer</th>
+                <th>Category</th>
+                <th>Unit</th>
+                <th style="text-align:right;">Pcs/Unit</th>
+                <th style="text-align:right;">Reorder Pt</th>
+                <th>QR Code</th>
+                {% if can_edit %}<th style="text-align:right;">Actions</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody id="items-tbody"></tbody>
+    </table>
+</div>
+
+<!-- Set Quantity Modal -->
+<div id="qty-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeQtyModal()"></div>
+    <div class="modal-content" style="max-width:420px;">
+        <button class="modal-close" onclick="closeQtyModal()">&times;</button>
+        <h3 style="margin-bottom:16px;" id="qty-modal-title">Set Shop Quantity</h3>
+        <form onsubmit="saveQty(event)">
+            <input type="hidden" id="qty-item-id">
+            <div style="margin-bottom:12px;">
+                <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Shop</label>
+                <select id="qty-shop" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;" required></select>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Quantity</label>
+                <input type="number" id="qty-value" min="0" step="1" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;" required>
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Section</label>
+                <input type="text" id="qty-section" placeholder="e.g. Aisle 3, Shelf B" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+            </div>
+            <button type="submit" class="btn btn--primary" style="width:100%;">Save Quantity</button>
+        </form>
+    </div>
+</div>
+
+<!-- Add/Edit Item Modal -->
+<div id="item-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeItemModal()"></div>
+    <div class="modal-content" style="max-width:520px;">
+        <button class="modal-close" onclick="closeItemModal()">&times;</button>
+        <h3 style="margin-bottom:16px;" id="item-modal-title">Add Item</h3>
+        <form onsubmit="saveItem(event)">
+            <input type="hidden" id="item-edit-id">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Name *</label>
+                    <input type="text" id="item-name" required style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Supplier</label>
+                    <select id="item-vendor" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                        <option value="">-- None --</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Manufacturer</label>
+                    <input type="text" id="item-manufacturer" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Category</label>
+                    <input type="text" id="item-category" value="General" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:16px;">
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Unit</label>
+                    <input type="text" id="item-unit" value="EACH" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Pcs/Unit</label>
+                    <input type="number" id="item-ppu" value="1" min="1" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Reorder Point</label>
+                    <input type="number" id="item-reorder" value="0" min="0" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+            </div>
+            <button type="submit" class="btn btn--primary" style="width:100%;">Save Item</button>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e5e7eb; }
+.data-table th { font-weight:600; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; background:#f9fafb; position:sticky; top:0; }
+.data-table tr:hover { background:#f3f4f6; }
+.btn-sm { padding:4px 10px; font-size:12px; border-radius:4px; border:1px solid #d1d5db; background:#fff; cursor:pointer; }
+.btn-sm:hover { background:#f3f4f6; }
+.btn-sm--danger { color:#dc2626; border-color:#fecaca; }
+.btn-sm--danger:hover { background:#fee2e2; }
+.item-thumb { width:32px; height:32px; object-fit:cover; border-radius:4px; border:1px solid #e5e7eb; }
+.item-link { color:inherit; text-decoration:none; }
+.item-link:hover { color:var(--color-primary, #2563eb); text-decoration:underline; }
+.img-upload-wrap { position:relative; display:inline-block; cursor:pointer; }
+.img-upload-wrap:hover::after { content:'+'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.4); color:#fff; font-size:16px; font-weight:700; border-radius:4px; }
+</style>
+<script>
+let allItems = [];
+let shops = [];
+let vendors = [];
+let searchTimeout;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadItems();
+    loadShops();
+    loadVendors();
+});
+
+function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(loadItems, 300);
+}
+
+async function loadShops() {
+    try {
+        var resp = await fetch('/stock/api/shops');
+        var data = await resp.json();
+        shops = data.shops || [];
+    } catch(e) {}
+}
+
+async function loadVendors() {
+    try {
+        var resp = await fetch('/stock/api/vendors');
+        var data = await resp.json();
+        vendors = data.vendors || [];
+        var sel = document.getElementById('item-vendor');
+        var html = '<option value="">-- None --</option>';
+        vendors.forEach(function(v) {
+            html += '<option value="' + v.id + '">' + escHtml(v.name) + '</option>';
+        });
+        sel.innerHTML = html;
+    } catch(e) {}
+}
+
+async function loadItems() {
+    var loading = document.getElementById('items-loading');
+    var empty = document.getElementById('items-empty');
+    var wrap = document.getElementById('items-table-wrap');
+
+    loading.style.display = 'block';
+    empty.style.display = 'none';
+    wrap.style.display = 'none';
+
+    var search = document.getElementById('item-search').value.trim();
+    var params = search ? '?search=' + encodeURIComponent(search) : '';
+
+    try {
+        var resp = await fetch('/stock/api/items' + params);
+        var data = await resp.json();
+        allItems = data.items || [];
+
+        loading.style.display = 'none';
+
+        if (allItems.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        wrap.style.display = 'block';
+        renderItems(allItems);
+    } catch(e) {
+        loading.textContent = 'Failed to load items.';
+    }
+}
+
+function renderItems(items) {
+    var tbody = document.getElementById('items-tbody');
+    var html = '';
+    items.forEach(function(item) {
+        html += '<tr>';
+        if (CAN_EDIT) {
+            html += '<td><input type="checkbox" class="item-check" data-id="' + item.id + '" onchange="updateReorderBtn()"></td>';
+        }
+        // Thumbnail
+        html += '<td>';
+        if (item.image_path) {
+            if (CAN_EDIT) {
+                html += '<label class="img-upload-wrap"><img class="item-thumb" src="/stock/images/' + escHtml(item.image_path) + '" alt=""><input type="file" style="display:none;" accept="image/jpeg,image/png,image/webp" onchange="quickUploadImage(' + item.id + ', this)"></label>';
+            } else {
+                html += '<img class="item-thumb" src="/stock/images/' + escHtml(item.image_path) + '" alt="">';
+            }
+        } else if (CAN_EDIT) {
+            html += '<label class="img-upload-wrap" style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:1px dashed #d1d5db;border-radius:4px;font-size:16px;color:#9ca3af;cursor:pointer;" title="Add image">+<input type="file" style="display:none;" accept="image/jpeg,image/png,image/webp" onchange="quickUploadImage(' + item.id + ', this)"></label>';
+        }
+        html += '</td>';
+        html += '<td><a class="item-link" href="/stock/items/' + item.id + '"><strong>' + escHtml(item.name) + '</strong></a></td>';
+        html += '<td>' + escHtml(item.vendor_name || '--') + '</td>';
+        html += '<td>' + escHtml(item.manufacturer || '--') + '</td>';
+        html += '<td>' + escHtml(item.category || '--') + '</td>';
+        html += '<td>' + escHtml(item.unit || 'EACH') + '</td>';
+        html += '<td style="text-align:right;">' + (item.pieces_per_unit || 1) + '</td>';
+        html += '<td style="text-align:right;">' + (item.reorder_point || 0) + '</td>';
+        html += '<td><code style="font-size:11px;">' + escHtml(item.qr_code_id || '') + '</code></td>';
+        if (CAN_EDIT) {
+            html += '<td style="text-align:right; white-space:nowrap;">';
+            html += '<button class="btn-sm" onclick="openQtyModal(' + item.id + ', \'' + escAttr(item.name) + '\')">Set Qty</button> ';
+            html += '<button class="btn-sm" onclick="openEditModal(' + item.id + ')">Edit</button> ';
+            html += '<button class="btn-sm btn-sm--danger" onclick="deleteItem(' + item.id + ', \'' + escAttr(item.name) + '\')">Delete</button>';
+            html += '</td>';
+        }
+        html += '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+// ── Image upload ──
+
+async function quickUploadImage(itemId, input) {
+    if (!input.files[0]) return;
+    var fd = new FormData();
+    fd.append('image', input.files[0]);
+    try {
+        var resp = await fetch('/stock/api/items/' + itemId + '/image', { method: 'POST', body: fd });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Upload failed'); return; }
+        loadItems();
+    } catch(e) { alert('Upload failed'); }
+}
+
+// ── Reorder ──
+
+function updateReorderBtn() {
+    var checked = document.querySelectorAll('.item-check:checked');
+    var btn = document.getElementById('btn-reorder');
+    if (btn) btn.style.display = checked.length > 0 ? 'inline-block' : 'none';
+}
+
+function toggleSelectAll() {
+    var checked = document.getElementById('select-all').checked;
+    document.querySelectorAll('.item-check').forEach(function(cb) { cb.checked = checked; });
+    updateReorderBtn();
+}
+
+async function startReorder() {
+    var checked = document.querySelectorAll('.item-check:checked');
+    if (checked.length === 0) return;
+
+    var items = [];
+    checked.forEach(function(cb) {
+        var itemId = parseInt(cb.dataset.id);
+        var item = allItems.find(function(i) { return i.id === itemId; });
+        var qty = prompt('Reorder quantity for "' + (item ? item.name : 'Item') + '":', item ? (item.reorder_point || 10) : 10);
+        if (qty && parseInt(qty) > 0) {
+            items.push({ item_id: itemId, quantity: parseInt(qty) });
+        }
+    });
+
+    if (items.length === 0) return;
+
+    try {
+        var resp = await fetch('/stock/api/reorder/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ items: items }),
+        });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Failed to create reorder'); return; }
+        var data = await resp.json();
+        alert(data.message + '\nGo to Reorder tab to review and send.');
+        document.querySelectorAll('.item-check').forEach(function(cb) { cb.checked = false; });
+        document.getElementById('select-all').checked = false;
+        updateReorderBtn();
+    } catch(e) { alert('Failed to create reorder'); }
+}
+
+// ── Item Modal ──
+
+function openItemModal(item) {
+    document.getElementById('item-modal').style.display = 'flex';
+    document.getElementById('item-modal-title').textContent = item ? 'Edit Item' : 'Add Item';
+    document.getElementById('item-edit-id').value = item ? item.id : '';
+    document.getElementById('item-name').value = item ? item.name : '';
+    document.getElementById('item-vendor').value = item ? (item.vendor_id || '') : '';
+    document.getElementById('item-manufacturer').value = item ? (item.manufacturer || '') : '';
+    document.getElementById('item-category').value = item ? (item.category || 'General') : 'General';
+    document.getElementById('item-unit').value = item ? (item.unit || 'EACH') : 'EACH';
+    document.getElementById('item-ppu').value = item ? (item.pieces_per_unit || 1) : 1;
+    document.getElementById('item-reorder').value = item ? (item.reorder_point || 0) : 0;
+}
+
+function openEditModal(itemId) {
+    var item = allItems.find(function(i) { return i.id === itemId; });
+    if (item) openItemModal(item);
+}
+
+function closeItemModal() {
+    document.getElementById('item-modal').style.display = 'none';
+}
+
+async function saveItem(e) {
+    e.preventDefault();
+    var editId = document.getElementById('item-edit-id').value;
+    var vendorVal = document.getElementById('item-vendor').value;
+    var payload = {
+        name: document.getElementById('item-name').value.trim(),
+        vendor_id: vendorVal ? parseInt(vendorVal) : null,
+        manufacturer: document.getElementById('item-manufacturer').value.trim(),
+        category: document.getElementById('item-category').value.trim(),
+        unit: document.getElementById('item-unit').value.trim().toUpperCase(),
+        pieces_per_unit: parseInt(document.getElementById('item-ppu').value) || 1,
+        reorder_point: parseInt(document.getElementById('item-reorder').value) || 0,
+    };
+
+    try {
+        var url = editId ? '/stock/api/items/' + editId : '/stock/api/items';
+        var method = editId ? 'PUT' : 'POST';
+        var resp = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+            var err = await resp.json();
+            alert(err.error || 'Failed to save item');
+            return;
+        }
+        closeItemModal();
+        loadItems();
+    } catch(e) {
+        alert('Failed to save item');
+    }
+}
+
+async function deleteItem(itemId, name) {
+    if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
+    try {
+        var resp = await fetch('/stock/api/items/' + itemId, {method: 'DELETE'});
+        if (!resp.ok) {
+            alert('Failed to delete item');
+            return;
+        }
+        loadItems();
+    } catch(e) {
+        alert('Failed to delete item');
+    }
+}
+
+// ── Quantity Modal ──
+
+function openQtyModal(itemId, itemName) {
+    document.getElementById('qty-modal').style.display = 'flex';
+    document.getElementById('qty-modal-title').textContent = 'Set Quantity: ' + itemName;
+    document.getElementById('qty-item-id').value = itemId;
+    document.getElementById('qty-value').value = '';
+    document.getElementById('qty-section').value = '';
+
+    var sel = document.getElementById('qty-shop');
+    var html = '';
+    shops.forEach(function(s) {
+        html += '<option value="' + s.id + '">' + escHtml(s.name) + '</option>';
+    });
+    sel.innerHTML = html;
+}
+
+function closeQtyModal() {
+    document.getElementById('qty-modal').style.display = 'none';
+}
+
+async function saveQty(e) {
+    e.preventDefault();
+    var payload = {
+        item_id: parseInt(document.getElementById('qty-item-id').value),
+        shop_id: parseInt(document.getElementById('qty-shop').value),
+        quantity: parseFloat(document.getElementById('qty-value').value) || 0,
+        section: document.getElementById('qty-section').value.trim(),
+    };
+
+    try {
+        var resp = await fetch('/stock/api/inventory', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+            var err = await resp.json();
+            alert(err.error || 'Failed to set quantity');
+            return;
+        }
+        closeQtyModal();
+    } catch(e) {
+        alert('Failed to set quantity');
+    }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function escAttr(str) {
+    if (!str) return '';
+    return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+</script>
+{% endblock %}

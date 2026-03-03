@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}CrewInventory — Labels{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
+    <h1>QR Label Generator</h1>
+    <button class="btn btn--primary" id="btn-pdf" onclick="generatePDF()" disabled>Generate PDF</button>
+</div>
+
+<!-- Search + Select All -->
+<div class="crew-filters">
+    <div class="search-bar">
+        <input type="text" id="label-search" placeholder="Search items..." oninput="debounceSearch()">
+    </div>
+    <div class="crew-filter-pills" style="align-items:center;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; font-weight:500;">
+            <input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)">
+            Select All
+        </label>
+        <span style="margin-left:12px; font-size:13px; color:var(--text-muted);" id="selected-count">0 selected</span>
+    </div>
+</div>
+
+<!-- Items Grid -->
+<div id="labels-loading" class="loading">Loading items...</div>
+<div id="labels-empty" class="card" style="display:none; text-align:center; padding:48px 20px;">
+    <p style="color:var(--text-muted); font-size:16px;">No items found.</p>
+</div>
+<div id="labels-grid" style="display:none;"></div>
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.label-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
+.label-card { display:flex; align-items:center; gap:12px; padding:12px 16px; border:1px solid #e5e7eb; border-radius:8px; cursor:pointer; transition:all .15s; }
+.label-card:hover { border-color:#93c5fd; background:#eff6ff; }
+.label-card.selected { border-color:#3b82f6; background:#dbeafe; }
+.label-card__check { flex-shrink:0; width:20px; height:20px; }
+.label-card__info { flex:1; min-width:0; }
+.label-card__name { font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.label-card__meta { font-size:12px; color:var(--text-muted); margin-top:2px; }
+.label-card__qr { flex-shrink:0; }
+.label-card__qr img { width:48px; height:48px; border-radius:4px; }
+</style>
+<script>
+let allItems = [];
+let selectedIds = new Set();
+let searchTimeout;
+
+document.addEventListener('DOMContentLoaded', loadItems);
+
+function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(loadItems, 300);
+}
+
+async function loadItems() {
+    var loading = document.getElementById('labels-loading');
+    var empty = document.getElementById('labels-empty');
+    var grid = document.getElementById('labels-grid');
+
+    loading.style.display = 'block';
+    empty.style.display = 'none';
+    grid.style.display = 'none';
+
+    var search = document.getElementById('label-search').value.trim();
+    var params = search ? '?search=' + encodeURIComponent(search) : '';
+
+    try {
+        var resp = await fetch('/stock/api/items' + params);
+        var data = await resp.json();
+        allItems = data.items || [];
+
+        loading.style.display = 'none';
+
+        if (allItems.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        grid.style.display = 'block';
+        renderGrid();
+    } catch(e) {
+        loading.textContent = 'Failed to load items.';
+    }
+}
+
+function renderGrid() {
+    var grid = document.getElementById('labels-grid');
+    grid.className = 'label-grid';
+    var html = '';
+
+    allItems.forEach(function(item) {
+        var isSelected = selectedIds.has(item.id);
+        html += '<div class="label-card ' + (isSelected ? 'selected' : '') + '" onclick="toggleItem(' + item.id + ')">';
+        html += '<input type="checkbox" class="label-card__check" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleItem(' + item.id + ')">';
+        html += '<div class="label-card__info">';
+        html += '<div class="label-card__name">' + escHtml(item.name) + '</div>';
+        html += '<div class="label-card__meta">';
+        if (item.sku) html += 'SKU: ' + escHtml(item.sku) + ' &middot; ';
+        html += escHtml(item.manufacturer || 'No manufacturer');
+        html += '</div>';
+        html += '</div>';
+        html += '<div class="label-card__qr"><img src="/stock/api/items/' + item.id + '/qr" alt="QR" loading="lazy"></div>';
+        html += '</div>';
+    });
+
+    grid.innerHTML = html;
+}
+
+function toggleItem(itemId) {
+    if (selectedIds.has(itemId)) {
+        selectedIds.delete(itemId);
+    } else {
+        selectedIds.add(itemId);
+    }
+    updateSelectionUI();
+    renderGrid();
+}
+
+function toggleSelectAll(checked) {
+    if (checked) {
+        allItems.forEach(function(item) { selectedIds.add(item.id); });
+    } else {
+        selectedIds.clear();
+    }
+    updateSelectionUI();
+    renderGrid();
+}
+
+function updateSelectionUI() {
+    document.getElementById('selected-count').textContent = selectedIds.size + ' selected';
+    document.getElementById('btn-pdf').disabled = selectedIds.size === 0;
+    document.getElementById('select-all').checked = selectedIds.size === allItems.length && allItems.length > 0;
+}
+
+async function generatePDF() {
+    if (selectedIds.size === 0) return;
+
+    var btn = document.getElementById('btn-pdf');
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+        var resp = await fetch('/stock/api/labels/pdf', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({item_ids: Array.from(selectedIds)}),
+        });
+
+        if (!resp.ok) {
+            var err = await resp.json();
+            alert(err.error || 'Failed to generate PDF');
+            return;
+        }
+
+        var blob = await resp.blob();
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'crewstock_labels.pdf';
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch(e) {
+        alert('Failed to generate PDF');
+    } finally {
+        btn.disabled = selectedIds.size === 0;
+        btn.textContent = 'Generate PDF';
+    }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

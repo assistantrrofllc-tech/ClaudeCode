@@ -15,6 +15,8 @@ RECEIPT_STORAGE_PATH = os.getenv("RECEIPT_STORAGE_PATH", str(PROJECT_ROOT / "sto
 CERT_STORAGE_PATH = os.getenv("CERT_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "certifications"))
 INVOICE_STORAGE_PATH = os.getenv("INVOICE_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "invoices"))
 PACKING_SLIP_STORAGE_PATH = os.getenv("PACKING_SLIP_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "packing-slips"))
+STOCK_IMAGE_STORAGE_PATH = os.getenv("STOCK_IMAGE_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "stock_images"))
+INVENTORY_DOC_STORAGE_PATH = os.getenv("INVENTORY_DOC_STORAGE_PATH", str(PROJECT_ROOT / "storage" / "inventory_documents"))
 
 # Twilio
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")

@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}CrewInventory — Vendors{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
+    <h1>Vendors</h1>
+    {% if can_edit %}
+    <button class="btn btn--primary" onclick="openVendorModal()">+ Add Vendor</button>
+    {% endif %}
+</div>
+
+<!-- Search -->
+<div class="crew-filters">
+    <div class="search-bar">
+        <input type="text" id="vendor-search" placeholder="Search vendors..." oninput="debounceSearch()">
+    </div>
+</div>
+
+<!-- Vendors Table -->
+<div id="vendors-loading" class="loading">Loading vendors...</div>
+<div id="vendors-empty" class="card" style="display:none; text-align:center; padding:48px 20px;">
+    <p style="color:var(--text-muted); font-size:16px;">No vendors found. Add your first vendor above.</p>
+</div>
+<div id="vendors-table-wrap" style="display:none; overflow-x:auto;">
+    <table class="data-table" id="vendors-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Contact</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Address</th>
+                <th>Notes</th>
+                {% if can_edit %}<th style="text-align:right;">Actions</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody id="vendors-tbody"></tbody>
+    </table>
+</div>
+
+<!-- Add/Edit Vendor Modal -->
+<div id="vendor-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeVendorModal()"></div>
+    <div class="modal-content" style="max-width:520px;">
+        <button class="modal-close" onclick="closeVendorModal()">&times;</button>
+        <h3 style="margin-bottom:16px;" id="vendor-modal-title">Add Vendor</h3>
+        <form onsubmit="saveVendor(event)">
+            <input type="hidden" id="vendor-edit-id">
+            <div style="margin-bottom:12px;">
+                <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Company Name *</label>
+                <input type="text" id="vendor-name" required style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Contact Name</label>
+                    <input type="text" id="vendor-contact" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Contact Email</label>
+                    <input type="email" id="vendor-email" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Phone</label>
+                    <input type="text" id="vendor-phone" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+                <div>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Address</label>
+                    <input type="text" id="vendor-address" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                </div>
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Notes</label>
+                <textarea id="vendor-notes" rows="2" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; resize:vertical;"></textarea>
+            </div>
+            <button type="submit" class="btn btn--primary" style="width:100%;">Save Vendor</button>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e5e7eb; }
+.data-table th { font-weight:600; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; background:#f9fafb; position:sticky; top:0; }
+.data-table tr:hover { background:#f3f4f6; }
+.btn-sm { padding:4px 10px; font-size:12px; border-radius:4px; border:1px solid #d1d5db; background:#fff; cursor:pointer; }
+.btn-sm:hover { background:#f3f4f6; }
+.btn-sm--danger { color:#dc2626; border-color:#fecaca; }
+.btn-sm--danger:hover { background:#fee2e2; }
+</style>
+<script>
+let allVendors = [];
+let searchTimeout;
+
+document.addEventListener('DOMContentLoaded', loadVendors);
+
+function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(loadVendors, 300);
+}
+
+async function loadVendors() {
+    var loading = document.getElementById('vendors-loading');
+    var empty = document.getElementById('vendors-empty');
+    var wrap = document.getElementById('vendors-table-wrap');
+    loading.style.display = 'block'; empty.style.display = 'none'; wrap.style.display = 'none';
+
+    var search = document.getElementById('vendor-search').value.trim();
+    var params = search ? '?search=' + encodeURIComponent(search) : '';
+
+    try {
+        var resp = await fetch('/stock/api/vendors' + params);
+        var data = await resp.json();
+        allVendors = data.vendors || [];
+        loading.style.display = 'none';
+        if (allVendors.length === 0) { empty.style.display = 'block'; return; }
+        wrap.style.display = 'block';
+        renderVendors();
+    } catch(e) { loading.textContent = 'Failed to load vendors.'; }
+}
+
+function renderVendors() {
+    var tbody = document.getElementById('vendors-tbody');
+    var html = '';
+    allVendors.forEach(function(v) {
+        html += '<tr>';
+        html += '<td><strong>' + escHtml(v.name) + '</strong></td>';
+        html += '<td>' + escHtml(v.contact_name || '--') + '</td>';
+        html += '<td>' + escHtml(v.contact_email || '--') + '</td>';
+        html += '<td>' + escHtml(v.phone || '--') + '</td>';
+        html += '<td>' + escHtml(v.address || '--') + '</td>';
+        html += '<td style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escHtml(v.notes || '--') + '</td>';
+        if (CAN_EDIT) {
+            html += '<td style="text-align:right; white-space:nowrap;">';
+            html += '<button class="btn-sm" onclick="openEditModal(' + v.id + ')">Edit</button> ';
+            html += '<button class="btn-sm btn-sm--danger" onclick="deleteVendor(' + v.id + ', \'' + escAttr(v.name) + '\')">Delete</button>';
+            html += '</td>';
+        }
+        html += '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function openVendorModal(vendor) {
+    document.getElementById('vendor-modal').style.display = 'flex';
+    document.getElementById('vendor-modal-title').textContent = vendor ? 'Edit Vendor' : 'Add Vendor';
+    document.getElementById('vendor-edit-id').value = vendor ? vendor.id : '';
+    document.getElementById('vendor-name').value = vendor ? vendor.name : '';
+    document.getElementById('vendor-contact').value = vendor ? (vendor.contact_name || '') : '';
+    document.getElementById('vendor-email').value = vendor ? (vendor.contact_email || '') : '';
+    document.getElementById('vendor-phone').value = vendor ? (vendor.phone || '') : '';
+    document.getElementById('vendor-address').value = vendor ? (vendor.address || '') : '';
+    document.getElementById('vendor-notes').value = vendor ? (vendor.notes || '') : '';
+}
+
+function openEditModal(vendorId) {
+    var v = allVendors.find(function(x) { return x.id === vendorId; });
+    if (v) openVendorModal(v);
+}
+
+function closeVendorModal() { document.getElementById('vendor-modal').style.display = 'none'; }
+
+async function saveVendor(e) {
+    e.preventDefault();
+    var editId = document.getElementById('vendor-edit-id').value;
+    var payload = {
+        name: document.getElementById('vendor-name').value.trim(),
+        contact_name: document.getElementById('vendor-contact').value.trim(),
+        contact_email: document.getElementById('vendor-email').value.trim(),
+        phone: document.getElementById('vendor-phone').value.trim(),
+        address: document.getElementById('vendor-address').value.trim(),
+        notes: document.getElementById('vendor-notes').value.trim(),
+    };
+
+    try {
+        var url = editId ? '/stock/api/vendors/' + editId : '/stock/api/vendors';
+        var method = editId ? 'PUT' : 'POST';
+        var resp = await fetch(url, { method: method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Failed to save vendor'); return; }
+        closeVendorModal();
+        loadVendors();
+    } catch(e) { alert('Failed to save vendor'); }
+}
+
+async function deleteVendor(vendorId, name) {
+    if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
+    try {
+        var resp = await fetch('/stock/api/vendors/' + vendorId, {method: 'DELETE'});
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Failed to delete vendor'); return; }
+        loadVendors();
+    } catch(e) { alert('Failed to delete vendor'); }
+}
+
+function escHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+function escAttr(str) { if (!str) return ''; return str.replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+</script>
+{% endblock %}

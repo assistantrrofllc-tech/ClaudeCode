@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+{% block title %}CrewInventory — {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
+    <div>
+        <a href="/stock/" style="font-size:13px; color:var(--text-muted); text-decoration:none;">&larr; Back to Dashboard</a>
+        <h1 style="margin-top:4px;">{{ project.name }}</h1>
+        {% if project.project_code %}<div style="font-size:13px; color:var(--text-muted);">{{ project.project_code }}</div>{% endif %}
+    </div>
+    <div style="display:flex; gap:8px;">
+        {% if can_edit %}
+        <a href="/stock/project/{{ project.id }}/upload" class="btn btn--secondary">Upload PO/Invoice</a>
+        {% endif %}
+        <button class="btn btn--primary" id="btn-return" onclick="openReturnModal()" disabled>Return Items to Shop</button>
+    </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="stats-row stats-row--4col" id="proj-stats">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-items">--</div>
+        <div class="stat-label">Items on Site</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-total-qty">--</div>
+        <div class="stat-label">Total Qty</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-checkouts">--</div>
+        <div class="stat-label">Checkouts</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-returns">--</div>
+        <div class="stat-label">Returns</div>
+    </div>
+</div>
+
+<!-- Inventory Table -->
+<h2 style="font-size:16px; margin-bottom:12px;">Checked-Out Items</h2>
+<div id="items-loading" class="loading">Loading...</div>
+<div id="items-empty" style="display:none; color:var(--text-muted); font-size:14px;">No items currently checked out to this project.</div>
+<div id="items-table-wrap" style="display:none; overflow-x:auto;">
+    <table class="data-table" id="items-table">
+        <thead>
+            <tr>
+                <th>Item</th>
+                <th>Supplier</th>
+                <th>Unit</th>
+                <th style="text-align:right;">Ordered</th>
+                <th style="text-align:right;">On Site</th>
+                <th style="text-align:right;">Remaining</th>
+                <th>Last Updated</th>
+            </tr>
+        </thead>
+        <tbody id="items-tbody"></tbody>
+    </table>
+</div>
+
+<!-- Transaction History -->
+<h2 style="font-size:16px; margin:32px 0 12px;">Transaction History</h2>
+<div id="txn-loading" class="loading" style="display:none;">Loading...</div>
+<div id="txn-empty" style="display:none; color:var(--text-muted); font-size:14px;">No transactions yet.</div>
+<div id="txn-table-wrap" style="display:none; overflow-x:auto;">
+    <table class="data-table" id="txn-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Item</th>
+                <th style="text-align:right;">Qty</th>
+                <th>Shop</th>
+                <th>Employee</th>
+            </tr>
+        </thead>
+        <tbody id="txn-tbody"></tbody>
+    </table>
+</div>
+
+<!-- Return Modal -->
+<div id="return-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeReturnModal()"></div>
+    <div class="modal-content" style="max-width:520px;">
+        <button class="modal-close" onclick="closeReturnModal()">&times;</button>
+        <h3 style="margin-bottom:16px;">Return Items to Shop</h3>
+        <div style="margin-bottom:12px;">
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Return to Shop</label>
+            <select id="return-shop" class="scanner-select" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;"></select>
+        </div>
+        <div style="margin-bottom:12px;">
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Employee</label>
+            <div style="position:relative;">
+                <input type="text" id="return-emp-search" placeholder="Search employee..." style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;" oninput="searchReturnEmployees()" autocomplete="off">
+                <input type="hidden" id="return-emp-id">
+                <div id="return-emp-dropdown" class="scanner-dropdown" style="display:none;"></div>
+            </div>
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:6px;">Select items to return:</label>
+            <div id="return-items-list"></div>
+        </div>
+        <button class="btn btn--primary" style="width:100%;" onclick="submitReturn()">Confirm Return</button>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+var PROJECT_ID = {{ project.id | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e5e7eb; }
+.data-table th { font-weight:600; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; background:#f9fafb; position:sticky; top:0; }
+.data-table tr:hover { background:#f3f4f6; }
+.badge--checkout { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#dbeafe; color:#1e40af; }
+.badge--return { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#dcfce7; color:#166534; }
+.badge--restock { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#fef3c7; color:#92400e; }
+.return-item { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #f3f4f6; }
+.return-item:last-child { border-bottom:none; }
+.return-item__name { flex:1; font-size:13px; }
+.return-item__max { font-size:12px; color:var(--text-muted); }
+.return-item__qty { width:70px; padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; text-align:center; }
+.scanner-dropdown {
+    position:absolute; left:0; right:0; top:100%; z-index:50;
+    background:#fff; border:1px solid #d1d5db; border-radius:8px;
+    max-height:200px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,.1);
+}
+.scanner-dropdown__item { padding:10px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid #f3f4f6; }
+.scanner-dropdown__item:hover { background:#f3f4f6; }
+.item-link { color:inherit; text-decoration:none; }
+.item-link:hover { color:var(--color-primary, #2563eb); text-decoration:underline; }
+</style>
+<script>
+let projectItems = [];
+let projectTxns = [];
+let shops = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadProjectData();
+    loadShops();
+});
+
+async function loadShops() {
+    try {
+        var resp = await fetch('/stock/api/shops');
+        var data = await resp.json();
+        shops = data.shops || [];
+        var sel = document.getElementById('return-shop');
+        shops.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name;
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+}
+
+async function loadProjectData() {
+    try {
+        var resp = await fetch('/stock/api/project/' + PROJECT_ID + '/inventory');
+        var data = await resp.json();
+        projectItems = data.items || [];
+        projectTxns = data.transactions || [];
+
+        renderItems();
+        renderTransactions();
+        renderStats();
+
+        document.getElementById('btn-return').disabled = projectItems.length === 0;
+    } catch(e) {
+        document.getElementById('items-loading').textContent = 'Failed to load data.';
+    }
+}
+
+function renderStats() {
+    var totalQty = 0;
+    projectItems.forEach(function(i) { totalQty += i.quantity; });
+
+    var checkouts = projectTxns.filter(function(t) { return t.type === 'checkout'; }).length;
+    var returns = projectTxns.filter(function(t) { return t.type === 'return'; }).length;
+
+    document.getElementById('stat-items').textContent = projectItems.length;
+    document.getElementById('stat-total-qty').textContent = Math.round(totalQty).toLocaleString();
+    document.getElementById('stat-checkouts').textContent = checkouts;
+    document.getElementById('stat-returns').textContent = returns;
+}
+
+function renderItems() {
+    var loading = document.getElementById('items-loading');
+    var empty = document.getElementById('items-empty');
+    var wrap = document.getElementById('items-table-wrap');
+
+    loading.style.display = 'none';
+
+    if (projectItems.length === 0) {
+        empty.style.display = 'block';
+        return;
+    }
+
+    wrap.style.display = 'block';
+    var tbody = document.getElementById('items-tbody');
+    var html = '';
+    projectItems.forEach(function(item) {
+        var ordered = item.quantity_ordered || 0;
+        var onSite = item.quantity || 0;
+        var remaining = ordered > 0 ? Math.max(0, ordered - onSite) : 0;
+        html += '<tr>';
+        html += '<td><a class="item-link" href="/stock/items/' + item.item_id + '"><strong>' + escHtml(item.name) + '</strong></a></td>';
+        html += '<td>' + escHtml(item.vendor_name || '--') + '</td>';
+        html += '<td>' + escHtml(item.unit || 'EACH') + '</td>';
+        html += '<td style="text-align:right;">' + (ordered > 0 ? Number(ordered).toLocaleString() : '--') + '</td>';
+        html += '<td style="text-align:right;">' + Number(onSite).toLocaleString() + '</td>';
+        html += '<td style="text-align:right;">' + (ordered > 0 ? Number(remaining).toLocaleString() : '--') + '</td>';
+        html += '<td>' + formatDate(item.updated_at) + '</td>';
+        html += '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function renderTransactions() {
+    var empty = document.getElementById('txn-empty');
+    var wrap = document.getElementById('txn-table-wrap');
+
+    if (projectTxns.length === 0) {
+        empty.style.display = 'block';
+        return;
+    }
+
+    wrap.style.display = 'block';
+    var tbody = document.getElementById('txn-tbody');
+    var html = '';
+    projectTxns.forEach(function(txn) {
+        var badgeClass = 'badge--' + txn.type;
+        html += '<tr>';
+        html += '<td>' + formatDate(txn.created_at) + '</td>';
+        html += '<td><span class="' + badgeClass + '">' + escHtml(txn.type) + '</span></td>';
+        html += '<td>' + escHtml(txn.item_name || '') + '</td>';
+        html += '<td style="text-align:right;">' + Number(txn.quantity).toLocaleString() + '</td>';
+        html += '<td>' + escHtml(txn.shop_name || '--') + '</td>';
+        html += '<td>' + escHtml(txn.employee_name || '--') + '</td>';
+        html += '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+// ── Return Modal ──
+
+function openReturnModal() {
+    document.getElementById('return-modal').style.display = 'flex';
+    var list = document.getElementById('return-items-list');
+    var html = '';
+    projectItems.forEach(function(item) {
+        html += '<div class="return-item">';
+        html += '<div class="return-item__name">' + escHtml(item.name) + '</div>';
+        html += '<div class="return-item__max">max: ' + Math.round(item.quantity) + '</div>';
+        html += '<input type="number" class="return-item__qty" data-item-id="' + item.item_id + '" data-max="' + item.quantity + '" min="0" max="' + Math.round(item.quantity) + '" value="0">';
+        html += '</div>';
+    });
+    list.innerHTML = html;
+}
+
+function closeReturnModal() {
+    document.getElementById('return-modal').style.display = 'none';
+}
+
+let returnEmpTimeout;
+async function searchReturnEmployees() {
+    clearTimeout(returnEmpTimeout);
+    var query = document.getElementById('return-emp-search').value.trim();
+    if (query.length < 2) {
+        document.getElementById('return-emp-dropdown').style.display = 'none';
+        return;
+    }
+    returnEmpTimeout = setTimeout(async function() {
+        try {
+            var resp = await fetch('/stock/api/employees?search=' + encodeURIComponent(query));
+            var data = await resp.json();
+            var dd = document.getElementById('return-emp-dropdown');
+            if ((data.employees || []).length === 0) { dd.style.display = 'none'; return; }
+            var html = '';
+            data.employees.forEach(function(e) {
+                html += '<div class="scanner-dropdown__item" onclick="selectReturnEmployee(' + e.id + ', \'' + escAttr(e.full_name || e.first_name) + '\')">';
+                html += escHtml(e.full_name || e.first_name);
+                html += '</div>';
+            });
+            dd.innerHTML = html;
+            dd.style.display = 'block';
+        } catch(e) {}
+    }, 300);
+}
+
+function selectReturnEmployee(id, name) {
+    document.getElementById('return-emp-id').value = id;
+    document.getElementById('return-emp-search').value = name;
+    document.getElementById('return-emp-dropdown').style.display = 'none';
+}
+
+async function submitReturn() {
+    var shopId = parseInt(document.getElementById('return-shop').value);
+    var empId = parseInt(document.getElementById('return-emp-id').value);
+    if (!shopId) { alert('Please select a shop'); return; }
+
+    var inputs = document.querySelectorAll('.return-item__qty');
+    var items = [];
+    inputs.forEach(function(input) {
+        var qty = parseInt(input.value) || 0;
+        var maxQty = parseFloat(input.dataset.max);
+        if (qty > 0 && qty <= maxQty) {
+            items.push({ item_id: parseInt(input.dataset.itemId), quantity: qty });
+        }
+    });
+
+    if (items.length === 0) {
+        alert('Please enter quantities to return');
+        return;
+    }
+
+    try {
+        var resp = await fetch('/stock/api/return', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                shop_id: shopId,
+                project_id: PROJECT_ID,
+                employee_id: empId || null,
+                items: items,
+            }),
+        });
+
+        var data = await resp.json();
+        if (!resp.ok) {
+            alert(data.error || 'Return failed');
+            return;
+        }
+
+        closeReturnModal();
+        loadProjectData();
+    } catch(e) {
+        alert('Return failed — network error');
+    }
+}
+
+// ── Helpers ──
+
+function escHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function escAttr(str) {
+    if (!str) return '';
+    return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '--';
+    var d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
+}
+</script>
+{% endblock %}

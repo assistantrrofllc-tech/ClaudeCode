@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}CrewInventory — {{ item.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/stock/items" style="font-size:13px; color:var(--text-muted); text-decoration:none;">&larr; Back to Items</a>
+    <div style="display:flex; align-items:center; gap:16px; margin-top:8px;">
+        <div id="item-image-wrap" style="display:none;">
+            <img id="item-image" src="" alt="" style="width:80px; height:80px; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb;">
+        </div>
+        <div>
+            <h1 style="margin:0;" id="item-title">{{ item.name }}</h1>
+            <div style="font-size:13px; color:var(--text-muted); margin-top:4px;" id="item-subtitle"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Upload (edit mode) -->
+{% if can_edit %}
+<div style="margin-bottom:16px;">
+    <label class="btn btn--secondary btn--small" style="cursor:pointer;">
+        Upload Image
+        <input type="file" id="image-upload" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="uploadImage()">
+    </label>
+    <button class="btn btn--secondary btn--small" id="btn-remove-image" style="display:none;" onclick="removeImage()">Remove Image</button>
+</div>
+{% endif %}
+
+<!-- Stats Row -->
+<div class="stats-row stats-row--4col" id="detail-stats">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-shop-qty">--</div>
+        <div class="stat-label">In Shops</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-proj-qty">--</div>
+        <div class="stat-label">On Projects</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-total-qty">--</div>
+        <div class="stat-label">Total Qty</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-reorder">--</div>
+        <div class="stat-label">Reorder Point</div>
+    </div>
+</div>
+
+<!-- Location Table -->
+<h2 style="font-size:16px; margin:24px 0 12px;">Locations</h2>
+<div id="locations-empty" style="display:none; color:var(--text-muted); font-size:14px;">No inventory in any location.</div>
+<div id="locations-wrap" style="display:none; overflow-x:auto;">
+    <table class="data-table" id="locations-table">
+        <thead><tr><th>Location</th><th>Type</th><th>Section</th><th style="text-align:right;">Qty</th></tr></thead>
+        <tbody id="locations-tbody"></tbody>
+    </table>
+</div>
+
+<!-- Transaction History -->
+<h2 style="font-size:16px; margin:32px 0 12px;">Transaction History</h2>
+<div id="txn-empty" style="display:none; color:var(--text-muted); font-size:14px;">No transactions yet.</div>
+<div id="txn-wrap" style="display:none; overflow-x:auto;">
+    <table class="data-table" id="txn-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th style="text-align:right;">Qty</th>
+                <th>Shop</th>
+                <th>Project</th>
+                <th>Employee</th>
+            </tr>
+        </thead>
+        <tbody id="txn-tbody"></tbody>
+    </table>
+</div>
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+var ITEM_ID = {{ item.id | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e5e7eb; }
+.data-table th { font-weight:600; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; background:#f9fafb; position:sticky; top:0; }
+.data-table tr:hover { background:#f3f4f6; }
+.badge--checkout { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#dbeafe; color:#1e40af; }
+.badge--return { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#dcfce7; color:#166534; }
+.badge--restock { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#fef3c7; color:#92400e; }
+.badge--adjustment { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#f3e8ff; color:#6b21a8; }
+</style>
+<script>
+let detailData = null;
+
+document.addEventListener('DOMContentLoaded', loadDetail);
+
+async function loadDetail() {
+    try {
+        var resp = await fetch('/stock/api/items/' + ITEM_ID + '/detail');
+        detailData = await resp.json();
+        renderDetail();
+    } catch(e) {
+        document.getElementById('item-subtitle').textContent = 'Failed to load details.';
+    }
+}
+
+function renderDetail() {
+    var item = detailData.item;
+
+    // Subtitle
+    var parts = [];
+    if (item.vendor_name) parts.push('Vendor: ' + item.vendor_name);
+    if (item.manufacturer) parts.push('Mfr: ' + item.manufacturer);
+    if (item.category) parts.push(item.category);
+    if (item.unit) parts.push(item.unit);
+    document.getElementById('item-subtitle').textContent = parts.join(' | ');
+
+    // Image
+    if (item.image_path) {
+        document.getElementById('item-image-wrap').style.display = 'block';
+        document.getElementById('item-image').src = '/stock/images/' + item.image_path;
+        var rmBtn = document.getElementById('btn-remove-image');
+        if (rmBtn) rmBtn.style.display = 'inline-block';
+    }
+
+    // Stats
+    document.getElementById('stat-shop-qty').textContent = detailData.total_shop_qty;
+    document.getElementById('stat-proj-qty').textContent = detailData.total_project_qty;
+    document.getElementById('stat-total-qty').textContent = detailData.total_shop_qty + detailData.total_project_qty;
+    document.getElementById('stat-reorder').textContent = item.reorder_point || 0;
+
+    // Locations
+    var shops = detailData.shop_inventory || [];
+    var projs = detailData.project_inventory || [];
+    if (shops.length === 0 && projs.length === 0) {
+        document.getElementById('locations-empty').style.display = 'block';
+    } else {
+        document.getElementById('locations-wrap').style.display = 'block';
+        var html = '';
+        shops.forEach(function(s) {
+            html += '<tr><td>' + escHtml(s.shop_name) + '</td><td>Shop</td><td>' + escHtml(s.section || '--') + '</td><td style="text-align:right;">' + Number(s.quantity).toLocaleString() + '</td></tr>';
+        });
+        projs.forEach(function(p) {
+            var qtyStr = Number(p.quantity).toLocaleString();
+            if (p.quantity_ordered > 0) qtyStr += ' / ' + Number(p.quantity_ordered).toLocaleString() + ' ordered';
+            html += '<tr><td><a href="/stock/project/' + p.project_id + '">' + escHtml(p.project_name) + '</a></td><td>Project</td><td>--</td><td style="text-align:right;">' + qtyStr + '</td></tr>';
+        });
+        document.getElementById('locations-tbody').innerHTML = html;
+    }
+
+    // Transactions
+    var txns = detailData.transactions || [];
+    if (txns.length === 0) {
+        document.getElementById('txn-empty').style.display = 'block';
+    } else {
+        document.getElementById('txn-wrap').style.display = 'block';
+        var html = '';
+        txns.forEach(function(t) {
+            html += '<tr>';
+            html += '<td>' + formatDate(t.created_at) + '</td>';
+            html += '<td><span class="badge--' + t.type + '">' + escHtml(t.type) + '</span></td>';
+            html += '<td style="text-align:right;">' + Number(t.quantity).toLocaleString() + '</td>';
+            html += '<td>' + escHtml(t.shop_name || '--') + '</td>';
+            html += '<td>' + escHtml(t.project_name || '--') + '</td>';
+            html += '<td>' + escHtml(t.employee_name || '--') + '</td>';
+            html += '</tr>';
+        });
+        document.getElementById('txn-tbody').innerHTML = html;
+    }
+}
+
+async function uploadImage() {
+    var input = document.getElementById('image-upload');
+    if (!input.files[0]) return;
+    var fd = new FormData();
+    fd.append('image', input.files[0]);
+    try {
+        var resp = await fetch('/stock/api/items/' + ITEM_ID + '/image', { method: 'POST', body: fd });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Upload failed'); return; }
+        loadDetail();
+    } catch(e) { alert('Upload failed'); }
+}
+
+async function removeImage() {
+    if (!confirm('Remove item image?')) return;
+    try {
+        var resp = await fetch('/stock/api/items/' + ITEM_ID + '/image', { method: 'DELETE' });
+        if (!resp.ok) { alert('Failed to remove image'); return; }
+        document.getElementById('item-image-wrap').style.display = 'none';
+        document.getElementById('btn-remove-image').style.display = 'none';
+    } catch(e) { alert('Failed to remove image'); }
+}
+
+function escHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+function formatDate(dateStr) {
+    if (!dateStr) return '--';
+    var d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
+}
+</script>
+{% endblock %}

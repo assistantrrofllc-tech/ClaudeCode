@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}CrewInventory — Upload Document — {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/stock/project/{{ project.id }}" style="font-size:13px; color:var(--text-muted); text-decoration:none;">&larr; Back to {{ project.name }}</a>
+    <h1 style="margin-top:8px;">Upload PO / Invoice</h1>
+</div>
+
+<!-- Upload Form -->
+<div class="card" style="padding:24px; margin-bottom:24px;">
+    <form id="upload-form" onsubmit="uploadDoc(event)">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+            <div>
+                <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Document Type</label>
+                <select id="doc-type" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                    <option value="po">Purchase Order</option>
+                    <option value="invoice">Invoice</option>
+                    <option value="packing_slip">Packing Slip</option>
+                    <option value="unknown">Other</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Vendor</label>
+                <select id="doc-vendor" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                    <option value="">-- Select Vendor --</option>
+                </select>
+            </div>
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Document File</label>
+            <div id="drop-zone" style="border:2px dashed #d1d5db; border-radius:8px; padding:40px 20px; text-align:center; cursor:pointer; transition:border-color .2s;">
+                <p style="color:var(--text-muted); margin:0; font-size:14px;">Drag & drop a file here, or click to browse</p>
+                <p style="color:var(--text-muted); margin:4px 0 0; font-size:12px;">PDF, JPG, or PNG</p>
+                <input type="file" id="doc-file" style="display:none;" accept=".pdf,.jpg,.jpeg,.png">
+                <div id="file-name" style="margin-top:8px; font-weight:600; display:none;"></div>
+            </div>
+        </div>
+        <button type="submit" class="btn btn--primary" style="width:100%;" id="btn-upload" disabled>Upload Document</button>
+    </form>
+</div>
+
+<!-- Previously Uploaded Documents -->
+<h2 style="font-size:16px; margin-bottom:12px;">Uploaded Documents</h2>
+<div id="docs-loading" class="loading" style="display:none;">Loading...</div>
+<div id="docs-empty" style="display:none; color:var(--text-muted); font-size:14px;">No documents uploaded yet.</div>
+<div id="docs-list" style="display:none;"></div>
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+var PROJECT_ID = {{ project.id | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.doc-card { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:8px; }
+.doc-card__info { flex:1; }
+.doc-card__name { font-weight:600; font-size:14px; }
+.doc-card__meta { font-size:12px; color:var(--text-muted); margin-top:2px; }
+.badge--pending { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#fef3c7; color:#92400e; }
+.badge--parsed { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#dbeafe; color:#1e40af; }
+.badge--confirmed { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#dcfce7; color:#166534; }
+#drop-zone.drag-over { border-color:var(--color-primary, #2563eb); background:#eff6ff; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadVendors();
+    loadDocs();
+    setupDragDrop();
+});
+
+function setupDragDrop() {
+    var zone = document.getElementById('drop-zone');
+    var input = document.getElementById('doc-file');
+
+    zone.addEventListener('click', function() { input.click(); });
+    zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
+    zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0) {
+            input.files = e.dataTransfer.files;
+            showFileName(e.dataTransfer.files[0].name);
+        }
+    });
+    input.addEventListener('change', function() {
+        if (input.files[0]) showFileName(input.files[0].name);
+    });
+}
+
+function showFileName(name) {
+    var el = document.getElementById('file-name');
+    el.textContent = name;
+    el.style.display = 'block';
+    document.getElementById('btn-upload').disabled = false;
+}
+
+async function loadVendors() {
+    try {
+        var resp = await fetch('/stock/api/vendors');
+        var data = await resp.json();
+        var sel = document.getElementById('doc-vendor');
+        (data.vendors || []).forEach(function(v) {
+            var opt = document.createElement('option');
+            opt.value = v.id;
+            opt.textContent = v.name;
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+}
+
+async function uploadDoc(e) {
+    e.preventDefault();
+    var input = document.getElementById('doc-file');
+    if (!input.files[0]) { alert('Select a file first'); return; }
+
+    var fd = new FormData();
+    fd.append('document', input.files[0]);
+    fd.append('doc_type', document.getElementById('doc-type').value);
+    var vendorId = document.getElementById('doc-vendor').value;
+    if (vendorId) fd.append('vendor_id', vendorId);
+
+    document.getElementById('btn-upload').disabled = true;
+    document.getElementById('btn-upload').textContent = 'Uploading...';
+
+    try {
+        var resp = await fetch('/stock/api/project/' + PROJECT_ID + '/documents', { method: 'POST', body: fd });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Upload failed'); return; }
+        input.value = '';
+        document.getElementById('file-name').style.display = 'none';
+        loadDocs();
+    } catch(e) {
+        alert('Upload failed');
+    } finally {
+        document.getElementById('btn-upload').disabled = false;
+        document.getElementById('btn-upload').textContent = 'Upload Document';
+    }
+}
+
+async function loadDocs() {
+    var loading = document.getElementById('docs-loading');
+    var empty = document.getElementById('docs-empty');
+    var list = document.getElementById('docs-list');
+    loading.style.display = 'block'; empty.style.display = 'none'; list.style.display = 'none';
+
+    try {
+        var resp = await fetch('/stock/api/project/' + PROJECT_ID + '/documents');
+        var data = await resp.json();
+        var docs = data.documents || [];
+        loading.style.display = 'none';
+        if (docs.length === 0) { empty.style.display = 'block'; return; }
+        list.style.display = 'block';
+        var html = '';
+        docs.forEach(function(d) {
+            html += '<div class="doc-card">';
+            html += '<div class="doc-card__info">';
+            html += '<div class="doc-card__name">' + escHtml(d.filename) + '</div>';
+            html += '<div class="doc-card__meta">';
+            html += escHtml(d.doc_type) + ' | ' + (d.vendor_name || 'No vendor') + ' | ' + formatDate(d.created_at);
+            html += '</div>';
+            html += '</div>';
+            html += '<span class="badge--' + d.status + '">' + d.status + '</span>';
+            html += '</div>';
+        });
+        list.innerHTML = html;
+    } catch(e) { loading.textContent = 'Failed to load documents.'; }
+}
+
+function escHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+function formatDate(dateStr) {
+    if (!dateStr) return '--';
+    var d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
+}
+</script>
+{% endblock %}

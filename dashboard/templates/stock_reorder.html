@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}CrewInventory — Reorder{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Quick Reorder</h1>
+    <p class="text-muted" style="margin-top:4px; font-size:14px;">Generate and send reorder emails to vendors</p>
+</div>
+
+<!-- Draft Orders -->
+<h2 style="font-size:16px; margin-bottom:12px;">Draft Orders</h2>
+<div id="drafts-loading" class="loading" style="display:none;">Loading...</div>
+<div id="drafts-empty" style="display:none; color:var(--text-muted); font-size:14px; margin-bottom:24px;">
+    No draft orders. Select items from the <a href="/stock/items">Items page</a> to create reorders.
+</div>
+<div id="drafts-list" style="display:none; margin-bottom:32px;"></div>
+
+<!-- Order History -->
+<h2 style="font-size:16px; margin-bottom:12px;">Order History</h2>
+<div id="history-loading" class="loading">Loading history...</div>
+<div id="history-empty" style="display:none; color:var(--text-muted); font-size:14px;">No orders sent yet.</div>
+<div id="history-wrap" style="display:none; overflow-x:auto;">
+    <table class="data-table" id="history-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Vendor</th>
+                <th>Items</th>
+                <th>Status</th>
+                <th>Sent</th>
+            </tr>
+        </thead>
+        <tbody id="history-tbody"></tbody>
+    </table>
+</div>
+
+<!-- Edit Draft Modal -->
+<div id="draft-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" onclick="closeDraftModal()"></div>
+    <div class="modal-content" style="max-width:600px;">
+        <button class="modal-close" onclick="closeDraftModal()">&times;</button>
+        <h3 style="margin-bottom:16px;" id="draft-modal-title">Edit Reorder</h3>
+        <div style="margin-bottom:12px;">
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">To Email</label>
+            <input type="email" id="draft-email-to" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+        </div>
+        <div style="margin-bottom:12px;">
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Subject</label>
+            <input type="text" id="draft-email-subject" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">Email Body</label>
+            <textarea id="draft-email-body" rows="10" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; font-family:monospace; resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button class="btn btn--primary" style="flex:1;" onclick="saveDraft()">Save Draft</button>
+            <button class="btn btn--primary" style="flex:1; background:var(--color-success, #16a34a);" onclick="sendDraft()">Send Email</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block pre_scripts %}
+<script>
+var USER_ROLE = {{ user_role | tojson }};
+var CAN_EDIT = {{ can_edit | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th, .data-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e5e7eb; }
+.data-table th { font-weight:600; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; background:#f9fafb; position:sticky; top:0; }
+.data-table tr:hover { background:#f3f4f6; }
+.draft-card { border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin-bottom:12px; }
+.draft-card__header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.draft-card__vendor { font-weight:600; font-size:15px; }
+.draft-card__items { font-size:13px; color:var(--text-muted); }
+.draft-card__item { padding:4px 0; }
+.badge--draft { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#fef3c7; color:#92400e; }
+.badge--sent { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#dcfce7; color:#166534; }
+.badge--cancelled { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:10px; background:#fee2e2; color:#991b1b; }
+.btn-sm { padding:4px 10px; font-size:12px; border-radius:4px; border:1px solid #d1d5db; background:#fff; cursor:pointer; }
+.btn-sm:hover { background:#f3f4f6; }
+</style>
+<script>
+let allOrders = [];
+let currentDraftId = null;
+
+document.addEventListener('DOMContentLoaded', loadAll);
+
+async function loadAll() {
+    try {
+        var resp = await fetch('/stock/api/reorder/history');
+        var data = await resp.json();
+        allOrders = data.orders || [];
+        renderDrafts();
+        renderHistory();
+    } catch(e) {
+        document.getElementById('history-loading').textContent = 'Failed to load orders.';
+    }
+}
+
+function renderDrafts() {
+    var drafts = allOrders.filter(function(o) { return o.status === 'draft'; });
+    var empty = document.getElementById('drafts-empty');
+    var list = document.getElementById('drafts-list');
+
+    if (drafts.length === 0) { empty.style.display = 'block'; list.style.display = 'none'; return; }
+    empty.style.display = 'none';
+    list.style.display = 'block';
+
+    var html = '';
+    drafts.forEach(function(d) {
+        html += '<div class="draft-card">';
+        html += '<div class="draft-card__header">';
+        html += '<div class="draft-card__vendor">' + escHtml(d.vendor_name || 'No Vendor') + '</div>';
+        html += '<div><button class="btn-sm" onclick="editDraft(' + d.id + ')">Edit & Send</button></div>';
+        html += '</div>';
+        html += '<div class="draft-card__items">';
+        (d.items || []).forEach(function(it) {
+            html += '<div class="draft-card__item">' + escHtml(it.name) + ' x ' + it.quantity + ' ' + escHtml(it.unit || '') + '</div>';
+        });
+        html += '</div>';
+        if (d.email_to) html += '<div style="font-size:12px; color:var(--text-muted); margin-top:6px;">To: ' + escHtml(d.email_to) + '</div>';
+        html += '</div>';
+    });
+    list.innerHTML = html;
+}
+
+function renderHistory() {
+    var sent = allOrders.filter(function(o) { return o.status !== 'draft'; });
+    var loading = document.getElementById('history-loading');
+    var empty = document.getElementById('history-empty');
+    var wrap = document.getElementById('history-wrap');
+    loading.style.display = 'none';
+
+    if (sent.length === 0) { empty.style.display = 'block'; return; }
+    wrap.style.display = 'block';
+
+    var html = '';
+    sent.forEach(function(o) {
+        var itemCount = (o.items || []).length;
+        html += '<tr>';
+        html += '<td>' + formatDate(o.created_at) + '</td>';
+        html += '<td>' + escHtml(o.vendor_name || '--') + '</td>';
+        html += '<td>' + itemCount + ' items</td>';
+        html += '<td><span class="badge--' + o.status + '">' + o.status + '</span></td>';
+        html += '<td>' + (o.sent_at ? formatDate(o.sent_at) : '--') + '</td>';
+        html += '</tr>';
+    });
+    document.getElementById('history-tbody').innerHTML = html;
+}
+
+async function editDraft(id) {
+    currentDraftId = id;
+    try {
+        var resp = await fetch('/stock/api/reorder/' + id);
+        var data = await resp.json();
+        var r = data.reorder;
+        document.getElementById('draft-modal-title').textContent = 'Reorder — ' + (r.vendor_name || 'No Vendor');
+        document.getElementById('draft-email-to').value = r.email_to || '';
+        document.getElementById('draft-email-subject').value = r.email_subject || '';
+        document.getElementById('draft-email-body').value = r.email_body || '';
+        document.getElementById('draft-modal').style.display = 'flex';
+    } catch(e) { alert('Failed to load draft'); }
+}
+
+function closeDraftModal() { document.getElementById('draft-modal').style.display = 'none'; currentDraftId = null; }
+
+async function saveDraft() {
+    if (!currentDraftId) return;
+    try {
+        var resp = await fetch('/stock/api/reorder/' + currentDraftId, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                email_to: document.getElementById('draft-email-to').value.trim(),
+                email_subject: document.getElementById('draft-email-subject').value.trim(),
+                email_body: document.getElementById('draft-email-body').value,
+            }),
+        });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Save failed'); return; }
+        closeDraftModal();
+        loadAll();
+    } catch(e) { alert('Save failed'); }
+}
+
+async function sendDraft() {
+    if (!currentDraftId) return;
+    if (!confirm('Send this reorder email?')) return;
+
+    // Save first
+    await saveDraft();
+
+    try {
+        var resp = await fetch('/stock/api/reorder/' + currentDraftId + '/send', { method: 'POST' });
+        var data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Send failed'); return; }
+        alert('Email sent successfully!');
+        closeDraftModal();
+        loadAll();
+    } catch(e) { alert('Send failed'); }
+}
+
+function escHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+function formatDate(dateStr) {
+    if (!dateStr) return '--';
+    var d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
+}
+</script>
+{% endblock %}
